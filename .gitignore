@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment (managed by uv)
+.venv/
+
+# Tooling caches
+.pytest_cache/
+
+# Local environment configuration
+.env

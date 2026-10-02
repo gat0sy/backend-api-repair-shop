@@ -1,0 +1,26 @@
+[project]
+name = "repair-shop-api"
+version = "0.1.0"
+description = "Task Management REST API"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.142.2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+# This is an application, not a library: no wheel is built, the project is
+# never installed into the venv, and `app` is imported from the repo root.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+]
