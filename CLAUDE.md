@@ -35,17 +35,25 @@ Task fields: `id`, `title`, `description`, `status`, `priority`, `created_at`, `
 ## API contract (final, settled in review)
 These are contract decisions. Implement each one in the build step it belongs to, not earlier. Don't change any of them silently: if implementation suggests a different behavior or value, raise it as an open question first.
 
+### Identifier
+- `id` is an auto-incrementing integer (Postgres identity column), assigned by the database. Clients never supply it.
+- A malformed ID (e.g. `/tasks/abc`) is rejected as invalid input. A well-formed ID that doesn't exist (e.g. `/tasks/99999`) returns 404. Both use the single JSON error structure.
+- Chosen over UUID because the project has one database, no auth, and no distributed ID generation. Revisit only if that changes.
+
 ### Title
 - Required on create.
 - `""` is invalid. Whitespace-only strings (e.g. `"   "`, `"\t\n"`) count as empty and are rejected.
 - Surrounding whitespace is stripped: `"  Fix printer  "` → `"Fix printer"`.
 - `title: null` is rejected.
 - The same rules apply when `title` is provided in PATCH.
+- Maximum length: **255 characters**, measured after stripping. Over-limit input is rejected, never truncated.
 
 ### Description
 - Optional on create. A task doesn't need one. May be `null`.
 - PATCH: omitted = leave unchanged. `null` = clear it. `"some text"` = replace it.
 - Responses always include `description`, with `null` meaning none.
+- Maximum length: **5000 characters**. Over-limit input is rejected, never truncated.
+- Length limits count characters, not bytes. They are enforced in the request schemas (Step 6). Whether to add a database-level `CHECK` as a second layer is open: propose it in the Step 3 report, don't add it unasked.
 
 ### Status
 - Exactly: `todo`, `in_progress`, `done`.
