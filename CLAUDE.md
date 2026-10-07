@@ -8,8 +8,9 @@ You are the coding/execution agent. The user is the developer/reviewer. Architec
 ## Stack
 - Python, FastAPI, PostgreSQL
 - Dependency management: **uv** with `pyproject.toml`
-- Data access: SQLAlchemy, SQLModel, or handwritten SQL. Propose one and justify it before adopting it.
-- Migrations: required once PostgreSQL persistence is introduced (Alembic unless discussed otherwise)
+- Data access: **SQLAlchemy Core** (no ORM), synchronous, **psycopg 3** driver. Chosen over the ORM (redundant change tracking and session semantics, since change detection lives in the domain), SQLModel (merges the schema and persistence layers), and handwritten SQL (manual mapping, no Alembic autogenerate).
+- Migrations: **Alembic**. Migrations are snapshots: they write values literally and never import app code.
+- Configuration: environment variables via **pydantic-settings** (`DATABASE_URL`, `TEST_DATABASE_URL`). `.env` is for local development only and is git-ignored, and `.env.example` documents it.
 - Tests: pytest
 
 ## Domain
@@ -53,7 +54,8 @@ These are contract decisions. Implement each one in the build step it belongs to
 - PATCH: omitted = leave unchanged. `null` = clear it. `"some text"` = replace it.
 - Responses always include `description`, with `null` meaning none.
 - Maximum length: **5000 characters**. Over-limit input is rejected, never truncated.
-- Length limits count characters, not bytes. They are enforced in the request schemas (Step 6). Whether to add a database-level `CHECK` as a second layer is open: propose it in the Step 3 report, don't add it unasked.
+- Stored exactly as given: no stripping and no conversion. `""` and whitespace-only strings stay as they are. Only `null` means "no description".
+- Length limits (title and description) count characters, not bytes. The request schemas (Step 6) are the primary enforcement. The database enforces them too, as a second layer: `CHECK (char_length(title) BETWEEN 1 AND 255)` and `CHECK (description IS NULL OR char_length(description) <= 5000)`.
 
 ### Status
 - Exactly: `todo`, `in_progress`, `done`.
@@ -87,6 +89,9 @@ These are contract decisions. Implement each one in the build step it belongs to
 - `status` and `priority` filters are combinable with pagination.
 - Deterministic ordering: `created_at DESC`, then `id DESC` as the tie-breaker.
 - 20, 100 and this ordering are explicit project-contract choices. Don't change them silently.
+- Response shape: `{"items": [...], "total": <int>, "limit": <int>, "offset": <int>}`. `total` is the number of tasks matching the filters, ignoring pagination.
+- `total` and `items` come from two queries in the same transaction at the default isolation level (READ COMMITTED). A concurrent write between them can make `total` differ slightly from the page. This is accepted, normal pagination behavior. Do **not** use REPEATABLE READ.
+- No index for the list query for now. Revisit only if data volume justifies it.
 
 ### Query parameters
 - Unknown query parameters are rejected, not ignored.
@@ -101,6 +106,14 @@ JWT, OAuth, Redis, Celery, Kafka, Kubernetes, microservices, AI features, fronte
 HTTP → FastAPI router → schemas/validation → service → repository → PostgreSQL
 ```
 and back out through the response schemas. Each layer has one job. Routers contain no business logic, and services contain no SQL.
+
+## Persistence decisions (settled)
+- Table `tasks`: `id INTEGER GENERATED ALWAYS AS IDENTITY` (the database assigns ids and refuses explicit ones). `title`/`description` are `TEXT`. `status`/`priority` are `TEXT` with `CHECK (... IN (...))`, not native Postgres ENUMs. Timestamps are `timestamptz NOT NULL`.
+- No server defaults. The application supplies status/priority defaults (domain) and both timestamps.
+- Timestamps come from the application clock (UTC, timezone-aware). The service passes one `now` for inserts and for PATCHes that actually change something.
+- Transactions: **one transaction per HTTP request**, owned by the application/request layer. It commits on success and rolls back on error. Repository methods never commit or roll back, and neither does the service.
+- PATCH runs read-modify-write in that one transaction. The row is locked with `SELECT ... FOR UPDATE` (`TaskRepository.get(..., for_update=True)`), so concurrent PATCHes can't overwrite each other's changes.
+- Local development database: Docker `postgres:17` on host port **5433**. The test suite uses a separate database whose name must end in `_test`, and its schema is rebuilt through the migrations on every run.
 
 ## Build order (inside-out)
 1. Project bootstrap
