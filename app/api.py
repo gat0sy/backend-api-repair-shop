@@ -20,6 +20,7 @@ from fastapi import (
 )
 from sqlalchemy import Engine
 
+from app.errors import problem_responses
 from app.repository import TaskRepository
 from app.schemas import (
     NoQueryParams,
@@ -84,7 +85,9 @@ def require_json(request: Request) -> None:
 # never be an id, so it is rejected as invalid input (and never reaches SQL,
 # where it would overflow the INTEGER parameter).
 MAX_TASK_ID = 2_147_483_647
-TaskId = Annotated[int, Path(ge=1, le=MAX_TASK_ID)]
+TaskId = Annotated[
+    int, Path(ge=1, le=MAX_TASK_ID, description="The task's id.")
+]
 
 # Declared on every route without query parameters, so unknown query
 # parameters are rejected there too (TaskListQuery does the same for the list).
@@ -94,7 +97,22 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.post(
-    "", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_json)]
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_json)],
+    summary="Create a task",
+    responses={
+        201: {
+            "description": "The task was created.",
+            "headers": {
+                "Location": {
+                    "description": "URL of the new task, e.g. `/tasks/42`.",
+                    "schema": {"type": "string"},
+                }
+            },
+        },
+        **problem_responses(400, 415, 422, 500),
+    },
 )
 def create_task(
     body: TaskCreate,
@@ -103,16 +121,28 @@ def create_task(
     response: Response,
     _: NoQuery,
 ) -> TaskResponse:
+    """Create a task. `status` defaults to `todo` and `priority` to `medium`."""
     with services.begin() as service:
         task = service.create_task(body.to_domain())
     response.headers["Location"] = request.app.url_path_for("get_task", task_id=task.id)
     return TaskResponse.from_domain(task)
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List tasks",
+    responses=problem_responses(422, 500),
+)
 def list_tasks(
     query: Annotated[TaskListQuery, Query()], services: ServicesDep
 ) -> TaskListResponse:
+    """List tasks, newest first (`created_at`, then `id`, descending).
+
+    `status` and `priority` filters can be combined with each other and with
+    pagination. Out-of-range `limit`/`offset` values are rejected, never
+    clamped. If a parameter is repeated, only its **last** value is used and
+    earlier values are ignored without being validated.
+    """
     with services.begin() as service:
         page = service.list_tasks(
             status=query.status,
@@ -123,23 +153,53 @@ def list_tasks(
     return TaskListResponse.from_domain(page)
 
 
-@router.get("/{task_id}")
+@router.get(
+    "/{task_id}",
+    summary="Get a task",
+    responses=problem_responses(404, 422, 500),
+)
 def get_task(task_id: TaskId, services: ServicesDep, _: NoQuery) -> TaskResponse:
+    """Return one task."""
     with services.begin() as service:
         task = service.get_task(task_id)
     return TaskResponse.from_domain(task)
 
 
-@router.patch("/{task_id}", dependencies=[Depends(require_json)])
+@router.patch(
+    "/{task_id}",
+    dependencies=[Depends(require_json)],
+    summary="Update a task (partial)",
+    responses=problem_responses(400, 404, 415, 422, 500),
+)
 def update_task(
     task_id: TaskId, body: TaskPatch, services: ServicesDep, _: NoQuery
 ) -> TaskResponse:
+    """Change only the fields present in the body and return the full task.
+
+    - Omitted field: left unchanged. `{}` is valid and changes nothing.
+    - `description: null` clears the description. `null` for `title`,
+      `status` or `priority` is rejected.
+    - `updated_at` changes only if at least one value actually changes
+      (e.g. sending the current status again leaves it untouched).
+
+    The body is plain `application/json`; JSON Patch and JSON Merge Patch
+    media types are not supported.
+    """
     with services.begin() as service:
         task = service.update_task(task_id, body.to_domain())
     return TaskResponse.from_domain(task)
 
 
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a task",
+    responses={
+        204: {"description": "The task was deleted. No response body."},
+        **problem_responses(404, 422, 500),
+    },
+)
 def delete_task(task_id: TaskId, services: ServicesDep, _: NoQuery) -> None:
+    """Delete a task. Deleting it again returns 404."""
     with services.begin() as service:
         service.delete_task(task_id)

@@ -5,7 +5,7 @@ Response schemas convert domain objects into JSON.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_serializer
 
@@ -37,7 +37,8 @@ Title = Annotated[
     AfterValidator(_validate_title),
     Field(
         description=(
-            "Surrounding whitespace is stripped. Must not be empty after stripping."
+            "Surrounding whitespace is stripped. Must be 1-255 characters "
+            "after stripping."
         ),
         json_schema_extra={"minLength": 1, "maxLength": TITLE_MAX_LENGTH},
     ),
@@ -47,13 +48,42 @@ Description = Annotated[
     str | None,
     Field(
         max_length=DESCRIPTION_MAX_LENGTH,
-        description="Stored exactly as given. `null` means no description.",
+        description=(
+            "Up to 5000 characters, stored exactly as given (no stripping). "
+            "`null` means no description."
+        ),
     ),
 ]
 
 
+def _not_nullable(schema: dict[str, Any]) -> None:
+    """Document an optional field without `null` as an allowed value.
+
+    `status: TaskStatus | None = None` means "may be omitted", but Pydantic
+    documents it as accepting `null`, which clients can't actually send.
+    """
+    any_of = schema.pop("anyOf", None)
+    if any_of:
+        schema.update(next(s for s in any_of if s.get("type") != "null"))
+
+
 class TaskCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """A new task. Only `title` is required. Unknown fields are rejected."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"title": "Fix printer"},
+                {
+                    "title": "Replace toner",
+                    "description": "Printer on floor 2",
+                    "status": "in_progress",
+                    "priority": "high",
+                },
+            ]
+        },
+    )
 
     title: Title
     description: Description = None
@@ -70,18 +100,38 @@ class TaskCreate(BaseModel):
 
 
 class TaskPatch(BaseModel):
-    """Partial update: only the fields present in the request body are applied."""
+    """Partial update: only the fields present in the body are considered.
+
+    An omitted field is left unchanged. `{}` is valid and changes nothing.
+    `updated_at` changes only if at least one value actually changes.
+    Unknown fields are rejected.
+    """
 
     # The `None` defaults below are never validated or applied. They only mark
     # a field as omitted. Which fields were actually sent is read from
     # `model_fields_set`. Because the declared types of `title`, `status` and
     # `priority` don't include None, an explicit `null` for them is rejected.
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"status": "done"},
+                {"title": "Fix printer (urgent)", "priority": "high"},
+                {"description": None},
+            ]
+        },
+    )
 
     title: Title = None  # type: ignore[assignment]
-    description: Description = None
-    status: TaskStatus = None  # type: ignore[assignment]
-    priority: TaskPriority = None  # type: ignore[assignment]
+    description: Description = Field(
+        default=None,
+        description=(
+            "Omit to keep the current description, `null` to clear it, "
+            "or a string (up to 5000 characters, stored as given) to replace it."
+        ),
+    )
+    status: TaskStatus = Field(default=None, description="`null` is rejected.")
+    priority: TaskPriority = Field(default=None, description="`null` is rejected.")
 
     def to_domain(self) -> TaskUpdate:
         provided = {name: getattr(self, name) for name in self.model_fields_set}
@@ -91,10 +141,22 @@ class TaskPatch(BaseModel):
 class TaskListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: TaskStatus | None = None
-    priority: TaskPriority | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
+    status: TaskStatus | None = Field(
+        default=None,
+        description="Only tasks with this status.",
+        json_schema_extra=_not_nullable,
+    )
+    priority: TaskPriority | None = Field(
+        default=None,
+        description="Only tasks with this priority.",
+        json_schema_extra=_not_nullable,
+    )
+    limit: int = Field(
+        default=20, ge=1, le=100, description="Maximum number of tasks to return."
+    )
+    offset: int = Field(
+        default=0, ge=0, description="Number of matching tasks to skip first."
+    )
 
 
 class NoQueryParams(BaseModel):
@@ -104,13 +166,22 @@ class NoQueryParams(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    id: int
+    """A task. Every field is always present."""
+
+    id: int = Field(description="Assigned by the server.")
     title: str
-    description: str | None
+    description: str | None = Field(description="`null` means no description.")
     status: TaskStatus
     priority: TaskPriority
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(
+        description="When the task was created. UTC, e.g. `2026-01-01T09:00:00Z`."
+    )
+    updated_at: datetime = Field(
+        description=(
+            "When a value last actually changed (equals `created_at` until then). "
+            "UTC."
+        )
+    )
 
     @field_serializer("created_at", "updated_at")
     def _as_utc(self, value: datetime) -> datetime:
@@ -131,10 +202,16 @@ class TaskResponse(BaseModel):
 
 
 class TaskListResponse(BaseModel):
-    items: list[TaskResponse]
-    total: int
-    limit: int
-    offset: int
+    """One page of tasks, newest first."""
+
+    items: list[TaskResponse] = Field(
+        description="Ordered by `created_at` descending, then `id` descending."
+    )
+    total: int = Field(
+        description="Number of tasks matching the filters, ignoring pagination."
+    )
+    limit: int = Field(description="The `limit` used for this page.")
+    offset: int = Field(description="The `offset` used for this page.")
 
     @classmethod
     def from_domain(cls, page: TaskPage) -> Self:

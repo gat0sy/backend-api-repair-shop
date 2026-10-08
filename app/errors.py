@@ -14,6 +14,8 @@ Every error response, whatever produced it, is converted here into:
 `errors` is always present. It lists the individual problems for validation
 errors and is empty otherwise. `type` is "about:blank" for every error, so
 clients distinguish errors by `status`, as RFC 9457 specifies for that type.
+
+This module also provides the OpenAPI documentation of these responses.
 """
 
 from collections.abc import Sequence
@@ -23,7 +25,7 @@ from typing import Any, Literal
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match
 
@@ -33,17 +35,63 @@ PROBLEM_JSON = "application/problem+json"
 
 
 class ErrorItem(BaseModel):
-    location: Literal["body", "query", "path"]
-    field: str | None
-    message: str
+    """One problem found in the request (only present for 422)."""
+
+    location: Literal["body", "query", "path"] = Field(
+        description="Where the problem is: request body, query string or URL path."
+    )
+    field: str | None = Field(
+        description=(
+            "Name of the offending field or parameter, "
+            "or `null` when the problem concerns the whole body."
+        )
+    )
+    message: str = Field(description="Human-readable explanation.")
 
 
 class Problem(BaseModel):
-    type: str = "about:blank"
-    title: str
-    status: int
-    detail: str
-    errors: list[ErrorItem] = []
+    """Error response (RFC 9457 Problem Details), sent as `application/problem+json`.
+
+    Every error from this API has exactly these keys.
+    """
+
+    # Document `type` and `errors` as required in responses: they have
+    # defaults but are always present in the JSON.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    type: str = Field(
+        default="about:blank",
+        description="Always `about:blank`: distinguish errors by `status`.",
+    )
+    title: str = Field(description="The HTTP status phrase, e.g. `Not Found`.")
+    status: int = Field(description="The HTTP status code.")
+    detail: str = Field(description="Human-readable explanation of this error.")
+    errors: list[ErrorItem] = Field(
+        default_factory=list,
+        description="Every problem found (422 only). Empty for all other statuses.",
+    )
+
+
+# `detail` texts, shared by the handlers and the documentation examples.
+MALFORMED_JSON = "The request body is not valid JSON."
+INVALID_DATA = "The request contains invalid data."
+UNEXPECTED_ERROR = "An unexpected error occurred."
+_HTTP_DETAILS = {
+    404: "No resource exists at this URL.",
+    405: "This method is not allowed for this URL.",
+    415: "The request body must be JSON, sent with Content-Type: application/json.",
+}
+
+
+def _problem(
+    status: int, detail: str, errors: Sequence[ErrorItem] = ()
+) -> Problem:
+    return Problem(
+        title=HTTPStatus(status).phrase,
+        status=status,
+        detail=detail,
+        errors=list(errors),
+    )
 
 
 def problem_response(
@@ -52,18 +100,15 @@ def problem_response(
     errors: Sequence[ErrorItem] = (),
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
-    problem = Problem(
-        title=HTTPStatus(status).phrase,
-        status=status,
-        detail=detail,
-        errors=list(errors),
-    )
     return JSONResponse(
-        problem.model_dump(mode="json"),
+        _problem(status, detail, errors).model_dump(mode="json"),
         status_code=status,
         headers=headers,
         media_type=PROBLEM_JSON,
     )
+
+
+# --- Exception handlers ---------------------------------------------------------
 
 
 def _error_item(error: dict[str, Any]) -> ErrorItem:
@@ -92,25 +137,20 @@ async def _validation_handler(
     # Unparseable JSON is a different failure from "parsed, but invalid":
     # 400, and no field-level details. The client's input is never echoed.
     if any(error["type"] == "json_invalid" for error in errors):
-        return problem_response(400, "The request body is not valid JSON.")
+        return problem_response(400, MALFORMED_JSON)
     return problem_response(
-        422,
-        "The request contains invalid data.",
-        [_error_item(error) for error in errors],
+        422, INVALID_DATA, [_error_item(error) for error in errors]
     )
+
+
+def _not_found_detail(task_id: int) -> str:
+    return f"Task {task_id} not found."
 
 
 async def _task_not_found_handler(
     request: Request, exc: TaskNotFoundError
 ) -> JSONResponse:
-    return problem_response(404, f"Task {exc.task_id} not found.")
-
-
-_HTTP_DETAILS = {
-    404: "No resource exists at this URL.",
-    405: "This method is not allowed for this URL.",
-    415: "The request body must be JSON, sent with Content-Type: application/json.",
-}
+    return problem_response(404, _not_found_detail(exc.task_id))
 
 
 _HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
@@ -151,7 +191,7 @@ async def _unexpected_error_handler(
     # Never expose internal details to the client. No logging here: Starlette
     # re-raises the exception after this response is sent, and the server
     # (uvicorn) logs it with the full traceback.
-    return problem_response(500, "An unexpected error occurred.")
+    return problem_response(500, UNEXPECTED_ERROR)
 
 
 # Passed to FastAPI(exception_handlers=...). The Exception entry handles
@@ -162,3 +202,68 @@ EXCEPTION_HANDLERS = {
     StarletteHTTPException: _http_exception_handler,
     Exception: _unexpected_error_handler,
 }
+
+
+# --- OpenAPI documentation ------------------------------------------------------
+
+_RESPONSE_DOCS: dict[int, tuple[str, Problem]] = {
+    400: ("The request body is not valid JSON.", _problem(400, MALFORMED_JSON)),
+    404: ("No task exists with this id.", _problem(404, _not_found_detail(42))),
+    415: (
+        "The request body is not sent as `application/json`.",
+        _problem(415, _HTTP_DETAILS[415]),
+    ),
+    422: (
+        "Invalid input. `errors` lists every problem found.",
+        _problem(
+            422,
+            INVALID_DATA,
+            [
+                ErrorItem(
+                    location="body",
+                    field="title",
+                    message="title must not be empty or whitespace-only",
+                ),
+                ErrorItem(
+                    location="query",
+                    field="foo",
+                    message="Unknown query parameter.",
+                ),
+            ],
+        ),
+    ),
+    500: ("Unexpected server error.", _problem(500, UNEXPECTED_ERROR)),
+}
+
+
+def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """OpenAPI `responses=` entries for the given error statuses.
+
+    Written by hand instead of FastAPI's `model=`, which would document them
+    as `application/json` rather than `application/problem+json`.
+    """
+    return {
+        status: {
+            "description": _RESPONSE_DOCS[status][0],
+            "content": {
+                PROBLEM_JSON: {
+                    "schema": {"$ref": "#/components/schemas/Problem"},
+                    "example": _RESPONSE_DOCS[status][1].model_dump(mode="json"),
+                }
+            },
+        }
+        for status in statuses
+    }
+
+
+def problem_schemas() -> dict[str, Any]:
+    """`Problem` and `ErrorItem` schemas, for the OpenAPI components section.
+
+    `problem_responses` refers to them by `$ref`, but FastAPI only registers
+    models it sees via `model=`, so they're added to the document explicitly.
+    """
+    schema = Problem.model_json_schema(
+        mode="serialization", ref_template="#/components/schemas/{model}"
+    )
+    definitions = schema.pop("$defs", {})
+    return {"Problem": schema, **definitions}
