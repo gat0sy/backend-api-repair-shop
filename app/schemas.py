@@ -89,10 +89,18 @@ class TaskPatch(BaseModel):
 
 
 class TaskListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+
+class NoQueryParams(BaseModel):
+    """For endpoints without query parameters: any query parameter is rejected."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class TaskResponse(BaseModel):

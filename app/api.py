@@ -8,11 +8,21 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import Engine
 
 from app.repository import TaskRepository
 from app.schemas import (
+    NoQueryParams,
     TaskCreate,
     TaskListQuery,
     TaskListResponse,
@@ -48,18 +58,50 @@ def get_services(request: Request) -> TaskServices:
 
 ServicesDep = Annotated[TaskServices, Depends(get_services)]
 
+def require_json(request: Request) -> None:
+    """Reject request bodies that aren't `application/json` with 415.
+
+    Only headers are read (dependencies run before validation and must do no
+    I/O). Parameters such as `; charset=utf-8` are allowed. Other JSON-based
+    types like `application/merge-patch+json` are rejected on purpose: this API
+    doesn't implement their semantics. A request with no body at all passes
+    here and gets the normal 422 for the missing body.
+    """
+    content_type = request.headers.get("content-type")
+    if content_type is None:
+        has_body = (
+            request.headers.get("content-length", "0") != "0"
+            or "transfer-encoding" in request.headers
+        )
+        if not has_body:
+            return
+    elif content_type.split(";", 1)[0].strip().lower() == "application/json":
+        return
+    raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+
 # Ids are Postgres INTEGER identity values. Anything outside 1..2^31-1 can
 # never be an id, so it is rejected as invalid input (and never reaches SQL,
 # where it would overflow the INTEGER parameter).
 MAX_TASK_ID = 2_147_483_647
 TaskId = Annotated[int, Path(ge=1, le=MAX_TASK_ID)]
 
+# Declared on every route without query parameters, so unknown query
+# parameters are rejected there too (TaskListQuery does the same for the list).
+NoQuery = Annotated[NoQueryParams, Query()]
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_json)]
+)
 def create_task(
-    body: TaskCreate, services: ServicesDep, request: Request, response: Response
+    body: TaskCreate,
+    services: ServicesDep,
+    request: Request,
+    response: Response,
+    _: NoQuery,
 ) -> TaskResponse:
     with services.begin() as service:
         task = service.create_task(body.to_domain())
@@ -82,20 +124,22 @@ def list_tasks(
 
 
 @router.get("/{task_id}")
-def get_task(task_id: TaskId, services: ServicesDep) -> TaskResponse:
+def get_task(task_id: TaskId, services: ServicesDep, _: NoQuery) -> TaskResponse:
     with services.begin() as service:
         task = service.get_task(task_id)
     return TaskResponse.from_domain(task)
 
 
-@router.patch("/{task_id}")
-def update_task(task_id: TaskId, body: TaskPatch, services: ServicesDep) -> TaskResponse:
+@router.patch("/{task_id}", dependencies=[Depends(require_json)])
+def update_task(
+    task_id: TaskId, body: TaskPatch, services: ServicesDep, _: NoQuery
+) -> TaskResponse:
     with services.begin() as service:
         task = service.update_task(task_id, body.to_domain())
     return TaskResponse.from_domain(task)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: TaskId, services: ServicesDep) -> None:
+def delete_task(task_id: TaskId, services: ServicesDep, _: NoQuery) -> None:
     with services.begin() as service:
         service.delete_task(task_id)

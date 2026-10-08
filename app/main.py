@@ -1,13 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from sqlalchemy import create_engine
 
 from app.api import router
 from app.config import Settings
-from app.service import TaskNotFoundError
+from app.errors import EXCEPTION_HANDLERS
 
 
 @asynccontextmanager
@@ -25,12 +24,8 @@ app = FastAPI(
     version="0.1.0",
     description="Task Management REST API.",
     lifespan=lifespan,
+    exception_handlers=EXCEPTION_HANDLERS,
+    # One canonical URL per resource: `/tasks/` is 404, not a redirect.
+    redirect_slashes=False,
 )
 app.include_router(router)
-
-
-@app.exception_handler(TaskNotFoundError)
-def task_not_found_handler(request: Request, exc: TaskNotFoundError) -> JSONResponse:
-    # FastAPI's default error shape for now; the single error structure
-    # replaces this in Step 7.
-    return JSONResponse(status_code=404, content={"detail": str(exc)})

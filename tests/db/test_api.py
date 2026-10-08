@@ -98,12 +98,12 @@ def test_create_rejects_invalid_body(client: TestClient, body: dict[str, object]
     assert client.post("/tasks", json=body).status_code == 422
 
 
-def test_create_rejects_malformed_json(client: TestClient) -> None:
+def test_create_rejects_malformed_json_with_400(client: TestClient) -> None:
     response = client.post(
         "/tasks", content="{not json", headers={"content-type": "application/json"}
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 # --- GET /tasks/{id} ------------------------------------------------------------
@@ -121,6 +121,19 @@ def test_get_returns_the_task(client: TestClient) -> None:
 @pytest.mark.parametrize("task_id", ["999999", "2147483647"])
 def test_get_unknown_id_returns_404(client: TestClient, task_id: str) -> None:
     assert client.get(f"/tasks/{task_id}").status_code == 404
+
+
+def test_unknown_id_returns_problem_details(client: TestClient) -> None:
+    response = client.get("/tasks/999999")
+
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": "Task 999999 not found.",
+        "errors": [],
+    }
 
 
 @pytest.mark.parametrize(
@@ -186,6 +199,50 @@ def test_list_combines_filters(client: TestClient) -> None:
 )
 def test_list_rejects_invalid_query(client: TestClient, params: dict[str, str]) -> None:
     assert client.get("/tasks", params=params).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_limit"),
+    [
+        ("limit=1&limit=2", 2),
+        ("limit=2&limit=1", 1),
+        # Earlier values are ignored and not validated, even if invalid.
+        ("limit=abc&limit=2", 2),
+        ("limit=500&limit=2", 2),
+    ],
+)
+def test_repeated_scalar_query_parameter_uses_the_last_value(
+    client: TestClient, query: str, expected_limit: int
+) -> None:
+    # Documented contract (FastAPI's behavior, pinned here so an upgrade that
+    # changes it is noticed): the last value of a repeated parameter wins.
+    for i in range(3):
+        create(client, title=f"task {i}")
+
+    response = client.get(f"/tasks?{query}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == expected_limit
+    assert len(body["items"]) == expected_limit
+
+
+def test_repeated_parameter_is_still_validated_on_its_last_value(
+    client: TestClient,
+) -> None:
+    response = client.get("/tasks?limit=2&limit=500")
+
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["field"] == "limit"
+
+
+def test_repeated_filter_uses_the_last_value(client: TestClient) -> None:
+    create(client, status="todo")
+    done = create(client, status="done")
+
+    body = client.get("/tasks?status=todo&status=done").json()
+
+    assert body["items"] == [done]
 
 
 # --- PATCH /tasks/{id} ----------------------------------------------------------

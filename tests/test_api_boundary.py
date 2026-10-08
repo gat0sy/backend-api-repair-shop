@@ -73,12 +73,27 @@ def test_invalid_body_never_opens_a_transaction(
 
 
 @pytest.mark.parametrize(
-    "params", [{"limit": "0"}, {"limit": "101"}, {"offset": "-1"}, {"status": "x"}]
+    ("method", "path", "params"),
+    [
+        ("GET", "/tasks", {"limit": "0"}),
+        ("GET", "/tasks", {"limit": "101"}),
+        ("GET", "/tasks", {"offset": "-1"}),
+        ("GET", "/tasks", {"status": "x"}),
+        ("GET", "/tasks", {"foo": "1"}),
+        ("GET", "/tasks/1", {"foo": "1"}),
+        ("POST", "/tasks", {"foo": "1"}),
+        ("PATCH", "/tasks/1", {"foo": "1"}),
+        ("DELETE", "/tasks/1", {"foo": "1"}),
+    ],
 )
 def test_invalid_query_never_opens_a_transaction(
-    client: TestClient, engine: RecordingEngine, params: dict[str, str]
+    client: TestClient,
+    engine: RecordingEngine,
+    method: str,
+    path: str,
+    params: dict[str, str],
 ) -> None:
-    response = client.get("/tasks", params=params)
+    response = client.request(method, path, params=params, json={"title": "t"})
 
     assert response.status_code == 422
     assert engine.begin_calls == 0
@@ -113,3 +128,15 @@ def test_id_range_is_part_of_the_openapi_contract(method: str) -> None:
     assert task_id["schema"]["type"] == "integer"
     assert task_id["schema"]["minimum"] == 1
     assert task_id["schema"]["maximum"] == MAX_TASK_ID
+
+
+@pytest.mark.parametrize(("method", "path"), [("POST", "/tasks"), ("PATCH", "/tasks/1")])
+def test_non_json_body_never_opens_a_transaction(
+    client: TestClient, engine: RecordingEngine, method: str, path: str
+) -> None:
+    response = client.request(
+        method, path, content=b"title=t", headers={"content-type": "text/plain"}
+    )
+
+    assert response.status_code == 415
+    assert engine.begin_calls == 0

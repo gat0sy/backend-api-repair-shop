@@ -71,6 +71,8 @@ These are contract decisions. Implement each one in the build step it belongs to
 
 ### Request bodies
 - Unknown/unrecognized fields are rejected, not silently ignored.
+- Media type: POST and PATCH bodies must be `application/json`. Parameters and case don't matter (`application/json; charset=utf-8` is fine). Any other `Content-Type`, including `+json` types such as `application/merge-patch+json`, or a body sent without `Content-Type`, gets **415**. A request with no body at all gets the normal 422 (missing body).
+- Syntactically invalid JSON gets **400**. JSON that parses but has invalid values gets **422**.
 
 ### PATCH semantics
 - PATCH is a partial update. Only provided fields are considered.
@@ -94,9 +96,28 @@ These are contract decisions. Implement each one in the build step it belongs to
 - No index for the list query for now. Revisit only if data volume justifies it.
 
 ### Query parameters
-- Unknown query parameters are rejected, not ignored.
+- Unknown query parameters are rejected (422) on **every** endpoint, not just `GET /tasks`. This uses Pydantic query models with `extra="forbid"`; endpoints without query parameters declare an empty one.
 - Every known query parameter has explicit validation constraints.
-- All validation failures (body and query) are eventually converted into the single consistent JSON error structure.
+- All validation failures (body and query) are converted into the single error structure.
+- Repeated scalar query parameters: **the last value wins** (FastAPI's behavior, kept on purpose). Earlier values are ignored and **not validated**: `?limit=abc&limit=5` is accepted as `limit=5`, and `?limit=5&limit=500` is rejected because 500 is invalid. Tests pin this behavior so a FastAPI upgrade that changes it is noticed. Known consequence: turning an existing scalar parameter into a multi-value one later (e.g. `status`) would be a breaking change for clients that send repeats.
+
+### URLs and methods
+- One canonical URL per resource. No trailing-slash redirects (`redirect_slashes=False`), so `/tasks/` is 404.
+- 405 responses list **every** method the URL supports in `Allow` (RFC 9110). Starlette alone lists only the first matching route's methods.
+
+### Error structure (RFC 9457 Problem Details)
+- Every error response uses `Content-Type: application/problem+json` and exactly these keys:
+  `{"type": "about:blank", "title": <HTTP status phrase>, "status": <code>, "detail": <explanation>, "errors": [...]}`.
+- `type` is always `about:blank`, so clients distinguish errors by `status`. No custom type URIs.
+- `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path", "field": <dotted name or null>, "message": <text>}`. For every other status it is empty.
+- Status codes:
+  - 400: malformed JSON.
+  - 404: unknown task or unknown URL.
+  - 405: method not allowed.
+  - 415: wrong media type.
+  - 422: invalid input.
+  - 500: unexpected error.
+- Never echo client input, and never expose internal details on 500. The server logs the traceback.
 
 ## Out of scope — do NOT add
 JWT, OAuth, Redis, Celery, Kafka, Kubernetes, microservices, AI features, frontend, distributed infrastructure, or abstractions the requirements don't need. No generic base repositories, DI containers, or plugin systems "for later". If you think something extra is justified, ask first.
