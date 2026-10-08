@@ -112,6 +112,7 @@ and back out through the response schemas. Each layer has one job. Routers conta
 - No server defaults. The application supplies status/priority defaults (domain) and both timestamps.
 - Timestamps come from the application clock (UTC, timezone-aware). The service passes one `now` for inserts and for PATCHes that actually change something.
 - Transactions: **one transaction per HTTP request**, owned by the application/request layer. It commits on success and rolls back on error. Repository methods never commit or roll back, and neither does the service.
+- Invalid requests never touch the database. The transaction is opened in the route body (`with services.begin() as service:`), which FastAPI runs only after all path, query and body validation has passed, and it is committed before the response is sent. Dependencies do no I/O, because FastAPI runs them before parameter validation.
 - PATCH runs read-modify-write in that one transaction. The row is locked with `SELECT ... FOR UPDATE` (`TaskRepository.get(..., for_update=True)`), so concurrent PATCHes can't overwrite each other's changes.
 - Local development database: Docker `postgres:17` on host port **5433**. The test suite uses a separate database whose name must end in `_test`, and its schema is rebuilt through the migrations on every run.
 

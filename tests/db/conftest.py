@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import Connection, Engine, create_engine, make_url
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
+START = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
 
 
 class DatabaseTestSettings(BaseSettings):
@@ -49,3 +51,22 @@ def connection(engine: Engine) -> Iterator[Connection]:
     with engine.connect() as connection:
         yield connection
         connection.rollback()
+
+
+class FakeClock:
+    """A clock the test controls: returns `now` until `advance` is called."""
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, delta: timedelta = timedelta(hours=1)) -> datetime:
+        self.now += delta
+        return self.now
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock(START)

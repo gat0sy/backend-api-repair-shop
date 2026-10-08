@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC
 
 import pytest
 from sqlalchemy import Connection
@@ -7,27 +7,9 @@ from app.domain import NewTask, Task, TaskPriority, TaskStatus, TaskUpdate
 from app.repository import TaskRepository
 from app.service import TaskNotFoundError, TaskPage, TaskService, utc_now
 
-START = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
+from .conftest import START, FakeClock
+
 MISSING_ID = 999_999
-
-
-class FakeClock:
-    """A clock the test controls: returns `now` until `advance` is called."""
-
-    def __init__(self, now: datetime) -> None:
-        self.now = now
-
-    def __call__(self) -> datetime:
-        return self.now
-
-    def advance(self, delta: timedelta = timedelta(hours=1)) -> datetime:
-        self.now += delta
-        return self.now
-
-
-@pytest.fixture
-def clock() -> FakeClock:
-    return FakeClock(START)
 
 
 @pytest.fixture
