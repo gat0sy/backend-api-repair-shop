@@ -174,6 +174,17 @@ def test_list_returns_newest_first_with_pagination(
     assert (body["total"], body["limit"], body["offset"]) == (3, 2, 1)
 
 
+def test_list_breaks_created_at_ties_by_id_descending(client: TestClient) -> None:
+    # The fake clock doesn't advance, so both tasks share created_at.
+    first = create(client, title="first")
+    second = create(client, title="second")
+    assert first["created_at"] == second["created_at"]
+
+    body = client.get("/tasks").json()
+
+    assert [item["id"] for item in body["items"]] == [second["id"], first["id"]]
+
+
 def test_list_combines_filters(client: TestClient) -> None:
     match = create(client, status="done", priority="high")
     create(client, status="done", priority="low")
