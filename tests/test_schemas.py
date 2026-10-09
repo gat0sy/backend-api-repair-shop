@@ -10,7 +10,13 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.domain import UNSET, Task, TaskPriority, TaskStatus
-from app.schemas import TaskCreate, TaskListQuery, TaskPatch, TaskResponse
+from app.schemas import (
+    MAX_OFFSET,
+    TaskCreate,
+    TaskListQuery,
+    TaskPatch,
+    TaskResponse,
+)
 
 
 def parse[M: BaseModel](model: type[M], data: object) -> M:
@@ -159,6 +165,46 @@ def test_patch_rejects_invalid_values(body: dict[str, object]) -> None:
     assert_invalid(TaskPatch, body)
 
 
+# --- Text PostgreSQL can't store ------------------------------------------------
+# FastAPI parses request bodies with `json.loads`, which accepts NUL and
+# unpaired surrogate escapes, then validates the resulting Python objects.
+# These tests do the same (Pydantic's own JSON parser would reject surrogates
+# earlier and hide the problem).
+
+UNSTORABLE_TEXT = [
+    pytest.param('"a\\u0000b"', "must not contain NUL characters", id="nul"),
+    pytest.param('"a\\ud800b"', "must be valid Unicode text", id="lone-high-surrogate"),
+    pytest.param('"\\udfff"', "must be valid Unicode text", id="lone-low-surrogate"),
+]
+
+
+@pytest.mark.parametrize("model", [TaskCreate, TaskPatch])
+@pytest.mark.parametrize("field", ["title", "description"])
+@pytest.mark.parametrize(("json_string", "expected"), UNSTORABLE_TEXT)
+def test_unstorable_text_is_rejected(
+    model: type[BaseModel], field: str, json_string: str, expected: str
+) -> None:
+    data = {field: json.loads(json_string)}
+    if model is TaskCreate and field != "title":
+        data["title"] = "t"
+
+    with pytest.raises(ValidationError) as exc_info:
+        model.model_validate(data)
+
+    (error,) = exc_info.value.errors()
+    assert error["loc"] == (field,)
+    assert f"{field} {expected}" in error["msg"]
+
+
+@pytest.mark.parametrize("field", ["title", "description"])
+def test_properly_paired_surrogates_are_accepted(field: str) -> None:
+    # "\ud83d\udd27" is a valid surrogate pair: the emoji U+1F527.
+    value = json.loads('"fix \\ud83d\\udd27"')
+    data = {"title": "t", field: value}
+
+    assert getattr(TaskCreate.model_validate(data), field) == "fix \U0001f527"
+
+
 # --- TaskListQuery --------------------------------------------------------------
 
 
@@ -178,9 +224,21 @@ def test_list_query_accepts_limit_bounds(limit: int) -> None:
     assert TaskListQuery(limit=limit).limit == limit
 
 
+@pytest.mark.parametrize("offset", [0, MAX_OFFSET])
+def test_list_query_accepts_offset_bounds(offset: int) -> None:
+    assert TaskListQuery(offset=offset).offset == offset
+
+
 @pytest.mark.parametrize(
     "params",
-    [{"limit": 0}, {"limit": 101}, {"limit": 500}, {"limit": -1}, {"offset": -1}],
+    [
+        {"limit": 0},
+        {"limit": 101},
+        {"limit": 500},
+        {"limit": -1},
+        {"offset": -1},
+        {"offset": MAX_OFFSET + 1},
+    ],
 )
 def test_list_query_rejects_out_of_range_values(params: dict[str, int]) -> None:
     with pytest.raises(ValidationError):

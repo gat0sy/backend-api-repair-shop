@@ -7,7 +7,15 @@ Response schemas convert domain objects into JSON.
 from datetime import UTC, datetime
 from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_serializer,
+)
 
 from app.domain import (
     NewTask,
@@ -21,6 +29,32 @@ from app.service import TaskPage
 
 TITLE_MAX_LENGTH = 255
 DESCRIPTION_MAX_LENGTH = 5000
+# PostgreSQL's OFFSET is a 64-bit integer (bigint). Larger values would fail in
+# SQL with a 500; every accepted offset past the end returns an empty page.
+MAX_OFFSET = 2**63 - 1
+
+
+def _reject_unstorable_text(value: object, info: ValidationInfo) -> object:
+    """Reject text that PostgreSQL can't store, so it's a 422 instead of a 500.
+
+    - NUL (U+0000): JSON allows it, but PostgreSQL TEXT can't contain it.
+    - Unpaired UTF-16 surrogates (e.g. a lone `\\ud800` escape): the request's
+      JSON parser accepts them, but they can't be encoded as UTF-8.
+
+    Runs before Pydantic's own string checks, so both fields fail the same way.
+    Non-strings pass through unchanged to Pydantic's normal type validation.
+    """
+    if isinstance(value, str):
+        if "\x00" in value:
+            raise ValueError(f"{info.field_name} must not contain NUL characters")
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError(
+                f"{info.field_name} must be valid Unicode text "
+                "(it contains an unpaired surrogate)"
+            ) from None
+    return value
 
 
 def _validate_title(value: str) -> str:
@@ -34,6 +68,7 @@ def _validate_title(value: str) -> str:
 
 Title = Annotated[
     str,
+    BeforeValidator(_reject_unstorable_text),
     AfterValidator(_validate_title),
     Field(
         description=(
@@ -45,9 +80,10 @@ Title = Annotated[
 ]
 
 Description = Annotated[
-    str | None,
+    # The length limit belongs to the string branch only (null has no length).
+    Annotated[str, Field(max_length=DESCRIPTION_MAX_LENGTH)] | None,
+    BeforeValidator(_reject_unstorable_text),
     Field(
-        max_length=DESCRIPTION_MAX_LENGTH,
         description=(
             "Up to 5000 characters, stored exactly as given (no stripping). "
             "`null` means no description."
@@ -155,7 +191,10 @@ class TaskListQuery(BaseModel):
         default=20, ge=1, le=100, description="Maximum number of tasks to return."
     )
     offset: int = Field(
-        default=0, ge=0, description="Number of matching tasks to skip first."
+        default=0,
+        ge=0,
+        le=MAX_OFFSET,
+        description="Number of matching tasks to skip first.",
     )
 
 

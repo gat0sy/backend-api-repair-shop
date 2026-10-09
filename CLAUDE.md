@@ -10,7 +10,7 @@ You are the coding/execution agent. The user is the developer/reviewer. Architec
 - Dependency management: **uv** with `pyproject.toml`
 - Data access: **SQLAlchemy Core** (no ORM), synchronous, **psycopg 3** driver. Chosen over the ORM (redundant change tracking and session semantics, since change detection lives in the domain), SQLModel (merges the schema and persistence layers), and handwritten SQL (manual mapping, no Alembic autogenerate).
 - Migrations: **Alembic**. Migrations are snapshots: they write values literally and never import app code.
-- Configuration: environment variables via **pydantic-settings** (`DATABASE_URL`, `TEST_DATABASE_URL`). `.env` is for local development only and is git-ignored, and `.env.example` documents it.
+- Configuration: environment variables via **pydantic-settings** (`DATABASE_URL`, `TEST_DATABASE_URL`, `CORS_ORIGINS`). `.env` is for local development only and is git-ignored, and `.env.example` documents it.
 - Tests: pytest
 
 ## Domain
@@ -48,6 +48,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - `title: null` is rejected.
 - The same rules apply when `title` is provided in PATCH.
 - Maximum length: **255 characters**, measured after stripping. Over-limit input is rejected, never truncated.
+- Must not contain NUL characters (`\u0000`) or unpaired UTF-16 surrogates: PostgreSQL TEXT can't store NUL, and text must be valid Unicode to encode as UTF-8. Rejected with 422 by a shared validator that runs before Pydantic's own string checks.
 
 ### Description
 - Optional on create. A task doesn't need one. May be `null`.
@@ -55,6 +56,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - Responses always include `description`, with `null` meaning none.
 - Maximum length: **5000 characters**. Over-limit input is rejected, never truncated.
 - Stored exactly as given: no stripping and no conversion. `""` and whitespace-only strings stay as they are. Only `null` means "no description".
+- Same rule as the title: no NUL characters or unpaired UTF-16 surrogates (422).
 - Length limits (title and description) count characters, not bytes. The request schemas (Step 6) are the primary enforcement. The database enforces them too, as a second layer: `CHECK (char_length(title) BETWEEN 1 AND 255)` and `CHECK (description IS NULL OR char_length(description) <= 5000)`.
 
 ### Status
@@ -86,7 +88,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 
 ### Pagination (`GET /tasks`)
 - `limit` = maximum number of tasks returned. Default **20**, minimum **1**, maximum **100**.
-- `offset` = number of matching tasks skipped before collecting results. Default **0**, must be non-negative.
+- `offset` = number of matching tasks skipped before collecting results. Default **0**, minimum **0**, maximum **9223372036854775807** (2^63−1: PostgreSQL's `OFFSET` is a bigint, and a larger value would fail in SQL). Any accepted offset past the end returns an empty page.
 - Out-of-range values (e.g. `limit=500`, `limit=0`, `offset=-1`) are rejected, never silently clamped.
 - `status` and `priority` filters are combinable with pagination.
 - Deterministic ordering: `created_at DESC`, then `id DESC` as the tie-breaker.
@@ -98,26 +100,35 @@ These are contract decisions. Implement each one in the build step it belongs to
 ### Query parameters
 - Unknown query parameters are rejected (422) on **every** endpoint, not just `GET /tasks`. This uses Pydantic query models with `extra="forbid"`; endpoints without query parameters declare an empty one.
 - Every known query parameter has explicit validation constraints.
+- Integer query parameters use Pydantic's standard (lax) parsing: `limit=5.0` is accepted as `5`, while `5.5` or `abc` is rejected. Accepted in the Step 13 review for v1.0.0; no custom coercion logic.
 - All validation failures (body and query) are converted into the single error structure.
 - Repeated scalar query parameters: **the last value wins** (FastAPI's behavior, kept on purpose). Earlier values are ignored and **not validated**: `?limit=abc&limit=5` is accepted as `limit=5`, and `?limit=5&limit=500` is rejected because 500 is invalid. Tests pin this behavior so a FastAPI upgrade that changes it is noticed. Known consequence: turning an existing scalar parameter into a multi-value one later (e.g. `status`) would be a breaking change for clients that send repeats.
+
+### CORS (browser frontends)
+- Configured with `CORS_ORIGINS`: a comma-separated list of exact origins (`scheme://host[:port]`, no path or trailing slash). Read by `CorsSettings`, which is separate from `Settings` because CORS is set up when the app is created and must not require `DATABASE_URL`.
+- Restrictive by default: unset or empty means no CORS layer at all. `*` and malformed origins are rejected at startup.
+- Starlette's `CORSMiddleware` with methods `GET, POST, PATCH, DELETE`, the request header `Content-Type`, `Location` exposed, and no credentials (there is no authentication).
+- A rejected preflight is answered as 400 Problem Details (a thin subclass in `app/cors.py`), so every error keeps the single error format.
+- The app is assembled by `create_app(cors_origins)` in `app/main.py`; the module-level `app` uses `CorsSettings`.
 
 ### URLs and methods
 - One canonical URL per resource. No trailing-slash redirects (`redirect_slashes=False`), so `/tasks/` is 404.
 - 405 responses list **every** method the URL supports in `Allow` (RFC 9110). Starlette alone lists only the first matching route's methods.
+- `HEAD` is supported wherever `GET` is (RFC 9110 §9.1/§9.3.2): the same endpoint functions are registered a second time for HEAD only, so status and headers match GET, and Starlette sends no body. These HEAD routes are hidden from OpenAPI (`include_in_schema=False`), because a combined GET+HEAD route gives both operations the same `operationId`, which is invalid OpenAPI.
 
 ### Error structure (RFC 9457 Problem Details)
 - Every error response uses `Content-Type: application/problem+json` and exactly these keys:
   `{"type": "about:blank", "title": <HTTP status phrase>, "status": <code>, "detail": <explanation>, "errors": [...]}`.
 - `type` is always `about:blank`, so clients distinguish errors by `status`. No custom type URIs.
-- `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path", "field": <dotted name or null>, "message": <text>}`. For every other status it is empty.
+- `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path"|"header"|"cookie", "field": <dotted name or null>, "message": <text>}` (no endpoint has header or cookie parameters yet; those locations are supported so adding one can't crash the error handler). For every other status it is empty.
 - Status codes:
-  - 400: malformed JSON.
+  - 400: malformed JSON, or a rejected CORS preflight.
   - 404: unknown task or unknown URL.
   - 405: method not allowed.
   - 415: wrong media type.
   - 422: invalid input.
   - 500: unexpected error.
-- Never echo client input, and never expose internal details on 500. The server logs the traceback.
+- Never echo submitted body or query values (a 404 detail names the requested task id, which is a validated integer), and never expose internal details on 500. The server logs the traceback.
 
 ## Out of scope — do NOT add
 JWT, OAuth, Redis, Celery, Kafka, Kubernetes, microservices, AI features, frontend, distributed infrastructure, or abstractions the requirements don't need. No generic base repositories, DI containers, or plugin systems "for later". If you think something extra is justified, ask first.
@@ -141,6 +152,7 @@ and back out through the response schemas. Each layer has one job. Routers conta
 - One command from a clean checkout: `docker compose up --build`. It starts `db`, then a one-shot `migrate` service (`alembic upgrade head`), then `api` on `127.0.0.1:8000`, but only after the migrations succeed. Migrations are never run from the API container's startup command.
 - One image (`Dockerfile`) serves both `migrate` and `api`: `python:3.13-slim`, uv pinned to the development version, `uv sync --frozen --no-dev`, non-root user. `.dockerignore` keeps `.env`, `.venv`, `.git` and the tests out of it.
 - Compose credentials are for local development only, and ports are bound to `127.0.0.1`.
+- No request body size limit in the app (accepted in the Step 13 review for v1.0.0, because published ports are bound to localhost). An internet-facing deployment must enforce one at a reverse proxy; the README's "Deployment notes" say so. No 413 status is part of the contract.
 - Local development (tests, `--reload`): `docker compose up -d db`, then the `uv run ...` commands with `.env` copied from `.env.example`.
 
 ## CI (settled)

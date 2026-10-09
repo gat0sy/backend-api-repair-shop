@@ -37,8 +37,14 @@ PROBLEM_JSON = "application/problem+json"
 class ErrorItem(BaseModel):
     """One problem found in the request (only present for 422)."""
 
-    location: Literal["body", "query", "path"] = Field(
-        description="Where the problem is: request body, query string or URL path."
+    # All locations FastAPI validates. No endpoint has header or cookie
+    # parameters today, but if one is added its errors must still be reported
+    # here (an unlisted location would crash this handler with a 500).
+    location: Literal["body", "query", "path", "header", "cookie"] = Field(
+        description=(
+            "Where the problem is: request body, query string or URL path "
+            "(`header` and `cookie` are reserved; no endpoint uses them yet)."
+        )
     )
     field: str | None = Field(
         description=(

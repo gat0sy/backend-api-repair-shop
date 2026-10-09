@@ -26,6 +26,7 @@ and interactive docs are generated from the code.
 - [Code quality](#code-quality)
 - [Continuous integration](#continuous-integration)
 - [Project structure](#project-structure)
+- [Deployment notes](#deployment-notes)
 
 ---
 
@@ -110,6 +111,8 @@ These apply to every endpoint:
 - **No trailing slashes.** `/tasks/` is `404`, not a redirect to `/tasks`.
 - **Wrong method.** A method the URL doesn't support returns `405`, with an
   `Allow` header listing the supported methods.
+- **HEAD** works on every URL that supports `GET`: same status and headers,
+  no body (RFC 9110). It isn't listed separately in the OpenAPI docs.
 - **Errors** always use the same [Problem Details](#errors) structure.
 
 ### The task object
@@ -137,6 +140,10 @@ These apply to every endpoint:
 | `updated_at`  | string (UTC)     | Set by the server. Changes only when a value actually changes (see [PATCH](#updating-a-task-patch-semantics)). |
 
 Length limits count characters, not bytes: `"é"` and `"🔧"` count as one each.
+
+Neither `title` nor `description` may contain NUL characters (`\u0000`) or
+unpaired UTF-16 surrogates (e.g. a lone `\ud800` escape): PostgreSQL can't
+store them, so such text is rejected with `422`.
 
 ### Endpoints
 
@@ -219,17 +226,20 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 | `status`        | (all)   | `todo`, `in_progress` or `done`                           |
 | `priority`      | (all)   | `low`, `medium` or `high`                                 |
 | `limit`         | `20`    | Maximum number of tasks returned. `1` to `100`.           |
-| `offset`        | `0`     | Number of matching tasks skipped first. `0` or more.      |
+| `offset`        | `0`     | Number of matching tasks skipped first. `0` to `9223372036854775807` (2^63−1, PostgreSQL's 64-bit limit). |
 
 - All parameters can be combined:
   `GET /tasks?status=todo&priority=high&limit=10&offset=20`.
 - **Ordering** is always newest first: `created_at` descending, then `id`
-  descending for tasks created at the same instant. Pages are stable.
+  descending for tasks created at the same instant. The ordering is
+  deterministic, but this is offset pagination: if tasks are created or
+  deleted between two page requests, items can shift, so a task may appear on
+  two pages or be skipped.
 - **`total`** is the number of tasks matching the filters, ignoring
   `limit`/`offset`. An `offset` past the end returns an empty `items` list,
   with `total` still filled in.
-- **Out-of-range values are rejected, not clamped**: `limit=0`, `limit=500`
-  and `offset=-1` are all `422`.
+- **Out-of-range values are rejected, not clamped**: `limit=0`, `limit=500`,
+  `offset=-1` and `offset=9223372036854775808` are all `422`.
 - **Repeated parameters: the last value wins.** For example,
   `?limit=5&limit=10` uses `limit=10`. Earlier values are ignored and not
   validated, so `?limit=abc&limit=5` is accepted as `limit=5`, while
@@ -238,6 +248,26 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 - `items` and `total` come from two queries in the same transaction. If tasks
   are created or deleted at the same moment, `total` can be briefly off by
   that change. This is normal for paginated APIs.
+
+### Browser frontends (CORS)
+
+A frontend served from a different origin (for example a dev server on
+`http://localhost:3000`) can only call the API if that origin is allowed.
+List the allowed origins in `CORS_ORIGINS`, comma-separated:
+
+```bash
+CORS_ORIGINS=http://localhost:3000 docker compose up --build
+```
+
+(or put `CORS_ORIGINS=...` in `.env`). Rules:
+
+- By default no origin is allowed. `*` (any origin) is rejected on purpose.
+- Each entry is an exact origin: `scheme://host[:port]`, no path, no trailing
+  slash. An invalid entry stops the API at startup with an error.
+- Allowed methods are `GET`, `POST`, `PATCH`, `DELETE`; the only allowed request
+  header is `Content-Type`. Frontend code can read the `Location` header.
+- No credentials (cookies or auth headers): the API has no authentication.
+- A rejected preflight request gets `400` in the usual error format.
 
 ### Errors
 
@@ -264,18 +294,19 @@ with `Content-Type: application/problem+json` and always the same five keys:
 | `title`  | The HTTP status phrase.                                                                  |
 | `status` | The HTTP status code.                                                                    |
 | `detail` | Human-readable explanation.                                                              |
-| `errors` | For `422`: every problem found, each with `location` (`body`, `query` or `path`), `field` (or `null` for the whole body) and `message`. Empty for every other status. |
+| `errors` | For `422`: every problem found, each with `location` (`body`, `query` or `path`; `header` and `cookie` are reserved for future parameters), `field` (or `null` for the whole body) and `message`. Empty for every other status. |
 
 | Status | When                                                                                              |
 |--------|---------------------------------------------------------------------------------------------------|
-| `400`  | The body is not valid JSON.                                                                       |
+| `400`  | The body is not valid JSON, or a CORS preflight request was rejected.                             |
 | `404`  | The task doesn't exist, or the URL doesn't exist.                                                 |
 | `405`  | The method isn't supported at this URL (`Allow` lists the supported ones).                        |
 | `415`  | A request body isn't sent as `application/json` (including a body sent with no `Content-Type`).   |
 | `422`  | Invalid input: field rules, unknown fields or query parameters, out-of-range values, invalid ids. |
 | `500`  | Unexpected server error. No internal details are included.                                        |
 
-Error responses never echo the submitted values back.
+Error responses never echo submitted body or query values back. (A `404`
+names the requested task id, e.g. `Task 42 not found.`)
 
 ```json
 {
@@ -360,3 +391,14 @@ docker/          PostgreSQL init script (creates the test database).
 
 A request flows `HTTP → route → schema validation → service → repository → PostgreSQL`
 and back. Invalid requests are rejected before any database work starts.
+
+## Deployment notes
+
+This project is set up for local development: Compose binds every published
+port to `127.0.0.1` and uses development-only credentials.
+
+An internet-facing deployment must run behind a reverse proxy or load balancer
+that **enforces a request body size limit** (for example nginx
+`client_max_body_size`). The API has no limit of its own: it reads the whole
+request body before validating it, so the 255/5000-character field limits
+don't protect against very large requests.

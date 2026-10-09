@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api import MAX_TASK_ID
 from app.main import app
+from app.schemas import MAX_OFFSET
 
 
 class RecordingEngine:
@@ -78,6 +79,7 @@ def test_invalid_body_never_opens_a_transaction(
         ("GET", "/tasks", {"limit": "0"}),
         ("GET", "/tasks", {"limit": "101"}),
         ("GET", "/tasks", {"offset": "-1"}),
+        ("GET", "/tasks", {"offset": str(MAX_OFFSET + 1)}),
         ("GET", "/tasks", {"status": "x"}),
         ("GET", "/tasks", {"foo": "1"}),
         ("GET", "/tasks/1", {"foo": "1"}),
@@ -118,6 +120,47 @@ def test_valid_request_opens_exactly_one_transaction(
 
     assert response.status_code == 500
     assert engine.begin_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("method", "path"), [("POST", "/tasks"), ("PATCH", "/tasks/1")]
+)
+@pytest.mark.parametrize("field", ["title", "description"])
+@pytest.mark.parametrize(
+    "json_string", ['"a\\u0000b"', '"a\\ud800b"'], ids=["nul", "lone-surrogate"]
+)
+def test_text_postgres_cannot_store_is_422_before_the_database(
+    client: TestClient,
+    engine: RecordingEngine,
+    method: str,
+    path: str,
+    field: str,
+    json_string: str,
+) -> None:
+    # Regression: these used to reach PostgreSQL and fail there with a 500.
+    other = ', "title": "t"' if field != "title" and method == "POST" else ""
+    body = f'{{"{field}": {json_string}{other}}}'
+
+    response = client.request(
+        method, path, content=body, headers={"content-type": "application/json"}
+    )
+
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert (error["location"], error["field"]) == ("body", field)
+    assert engine.begin_calls == 0
+
+
+@pytest.mark.parametrize("url", ["/tasks/abc", "/tasks?foo=1", "/tasks?limit=0"])
+def test_invalid_head_is_a_bodiless_422_before_the_database(
+    client: TestClient, engine: RecordingEngine, url: str
+) -> None:
+    response = client.head(url)
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.content == b""
+    assert engine.begin_calls == 0
 
 
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])

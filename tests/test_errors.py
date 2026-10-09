@@ -4,14 +4,19 @@ Every error response must have Content-Type application/problem+json and
 exactly the keys type, title, status, detail and errors.
 """
 
+import asyncio
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import pytest
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
 from app.api import get_services
+from app.errors import EXCEPTION_HANDLERS
 from app.main import app
 from app.service import TaskNotFoundError
 
@@ -150,7 +155,10 @@ def test_trailing_slash_is_not_redirected(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     ("url", "expected"),
-    [("/tasks/1", {"GET", "PATCH", "DELETE"}), ("/tasks", {"GET", "POST"})],
+    [
+        ("/tasks/1", {"GET", "HEAD", "PATCH", "DELETE"}),
+        ("/tasks", {"GET", "HEAD", "POST"}),
+    ],
 )
 def test_wrong_method_lists_every_allowed_method(
     client: TestClient, url: str, expected: set[str]
@@ -312,3 +320,25 @@ def test_missing_body_without_content_type_is_still_422(client: TestClient) -> N
         None,
         "Field required",
     )
+
+
+@pytest.mark.parametrize("location", ["header", "cookie"])
+def test_header_and_cookie_errors_use_the_problem_structure(location: str) -> None:
+    # No endpoint takes header or cookie parameters today, so call the real
+    # registered 422 handler with an error shaped like FastAPI's. Regression:
+    # these locations used to crash the handler (and become a 500).
+    handler = EXCEPTION_HANDLERS[RequestValidationError]
+    error = {
+        "type": "missing",
+        "loc": (location, "x-client-version"),
+        "msg": "Field required",
+        "input": None,
+    }
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+
+    response = asyncio.run(handler(request, RequestValidationError([error])))
+
+    assert response.status_code == 422
+    assert json.loads(bytes(response.body))["errors"] == [
+        {"location": location, "field": "x-client-version", "message": "Field required"}
+    ]
