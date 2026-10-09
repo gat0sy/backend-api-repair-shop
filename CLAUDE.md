@@ -179,6 +179,7 @@ and back out through the response schemas. Each layer has one job. Routers conta
 12. CI pipeline
 13. Final code review: one review of the whole codebase. The user decides each finding: fix it (its own commit, behind green CI) or accept it with a reason.
 14. Release: tag the reviewed commit `v1.0.0`, and set the GitHub repository description and topics.
+    Versioning: the version is in `pyproject.toml` and in `app/main.py` (OpenAPI `info.version`), kept equal by a test (`tests/test_bootstrap.py`); `uv.lock` is regenerated with `uv lock`. Releases are annotated `vX.Y.Z` tags on `main`, created only after CI is green on the tagged commit.
 
 The review comes before the release, so that `v1.0.0` is the version actually handed over and doesn't need a follow-up release for issues that were already known.
 

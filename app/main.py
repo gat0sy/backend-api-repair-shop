@@ -50,7 +50,7 @@ def create_app(cors_origins: Sequence[str] = ()) -> FastAPI:
     """Build the application. `cors_origins`: browser origins allowed (CORS)."""
     app = FastAPI(
         title="Repair Shop Task API",
-        version="0.1.0",
+        version="1.0.0",
         description=DESCRIPTION,
         lifespan=lifespan,
         exception_handlers=EXCEPTION_HANDLERS,
