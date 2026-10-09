@@ -150,6 +150,7 @@ and back out through the response schemas. Each layer has one job. Routers conta
 - One command from a clean checkout: `docker compose up --build`. It starts `db`, then a one-shot `migrate` service (`alembic upgrade head`), then `api` on `127.0.0.1:8000`, but only after the migrations succeed. Migrations are never run from the API container's startup command.
 - One image (`Dockerfile`) serves both `migrate` and `api`: `python:3.13-slim`, uv pinned to the development version, `uv sync --frozen --no-dev`, non-root user. `.dockerignore` keeps `.env`, `.venv`, `.git` and the tests out of it.
 - Compose credentials are for local development only, and ports are bound to `127.0.0.1`.
+- No request body size limit in the app (accepted in the Step 13 review for v1.0.0, because published ports are bound to localhost). An internet-facing deployment must enforce one at a reverse proxy; the README's "Deployment notes" say so. No 413 status is part of the contract.
 - Local development (tests, `--reload`): `docker compose up -d db`, then the `uv run ...` commands with `.env` copied from `.env.example`.
 
 ## CI (settled)

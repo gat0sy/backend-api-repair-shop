@@ -26,6 +26,7 @@ and interactive docs are generated from the code.
 - [Code quality](#code-quality)
 - [Continuous integration](#continuous-integration)
 - [Project structure](#project-structure)
+- [Deployment notes](#deployment-notes)
 
 ---
 
@@ -384,3 +385,14 @@ docker/          PostgreSQL init script (creates the test database).
 
 A request flows `HTTP → route → schema validation → service → repository → PostgreSQL`
 and back. Invalid requests are rejected before any database work starts.
+
+## Deployment notes
+
+This project is set up for local development: Compose binds every published
+port to `127.0.0.1` and uses development-only credentials.
+
+An internet-facing deployment must run behind a reverse proxy or load balancer
+that **enforces a request body size limit** (for example nginx
+`client_max_body_size`). The API has no limit of its own: it reads the whole
+request body before validating it, so the 255/5000-character field limits
+don't protect against very large requests.
