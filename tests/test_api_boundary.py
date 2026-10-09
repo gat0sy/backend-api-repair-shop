@@ -120,6 +120,35 @@ def test_valid_request_opens_exactly_one_transaction(
     assert engine.begin_calls == 1
 
 
+@pytest.mark.parametrize(
+    ("method", "path"), [("POST", "/tasks"), ("PATCH", "/tasks/1")]
+)
+@pytest.mark.parametrize("field", ["title", "description"])
+@pytest.mark.parametrize(
+    "json_string", ['"a\\u0000b"', '"a\\ud800b"'], ids=["nul", "lone-surrogate"]
+)
+def test_text_postgres_cannot_store_is_422_before_the_database(
+    client: TestClient,
+    engine: RecordingEngine,
+    method: str,
+    path: str,
+    field: str,
+    json_string: str,
+) -> None:
+    # Regression: these used to reach PostgreSQL and fail there with a 500.
+    other = ', "title": "t"' if field != "title" and method == "POST" else ""
+    body = f'{{"{field}": {json_string}{other}}}'
+
+    response = client.request(
+        method, path, content=body, headers={"content-type": "application/json"}
+    )
+
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert (error["location"], error["field"]) == ("body", field)
+    assert engine.begin_calls == 0
+
+
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_id_range_is_part_of_the_openapi_contract(method: str) -> None:
     operation = app.openapi()["paths"]["/tasks/{task_id}"][method]

@@ -138,6 +138,10 @@ These apply to every endpoint:
 
 Length limits count characters, not bytes: `"é"` and `"🔧"` count as one each.
 
+Neither `title` nor `description` may contain NUL characters (`\u0000`) or
+unpaired UTF-16 surrogates (e.g. a lone `\ud800` escape): PostgreSQL can't
+store them, so such text is rejected with `422`.
+
 ### Endpoints
 
 | Method   | Path           | Success                     | Possible errors          |

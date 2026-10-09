@@ -48,6 +48,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - `title: null` is rejected.
 - The same rules apply when `title` is provided in PATCH.
 - Maximum length: **255 characters**, measured after stripping. Over-limit input is rejected, never truncated.
+- Must not contain NUL characters (`\u0000`) or unpaired UTF-16 surrogates: PostgreSQL TEXT can't store NUL, and text must be valid Unicode to encode as UTF-8. Rejected with 422 by a shared validator that runs before Pydantic's own string checks.
 
 ### Description
 - Optional on create. A task doesn't need one. May be `null`.
@@ -55,6 +56,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - Responses always include `description`, with `null` meaning none.
 - Maximum length: **5000 characters**. Over-limit input is rejected, never truncated.
 - Stored exactly as given: no stripping and no conversion. `""` and whitespace-only strings stay as they are. Only `null` means "no description".
+- Same rule as the title: no NUL characters or unpaired UTF-16 surrogates (422).
 - Length limits (title and description) count characters, not bytes. The request schemas (Step 6) are the primary enforcement. The database enforces them too, as a second layer: `CHECK (char_length(title) BETWEEN 1 AND 255)` and `CHECK (description IS NULL OR char_length(description) <= 5000)`.
 
 ### Status
