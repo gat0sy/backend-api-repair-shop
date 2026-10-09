@@ -1,5 +1,7 @@
 # Repair Shop Task API
 
+[![CI](https://github.com/gat0sy/backend-api-repair-shop/actions/workflows/ci.yml/badge.svg)](https://github.com/gat0sy/backend-api-repair-shop/actions/workflows/ci.yml)
+
 A small task management REST API built with **FastAPI** and **PostgreSQL**.
 It's designed so a frontend developer can use it without guessing: every
 response shape, status code and error format is fixed and documented here,
@@ -22,6 +24,7 @@ and interactive docs are generated from the code.
   - [Errors](#errors)
 - [Testing](#testing)
 - [Code quality](#code-quality)
+- [Continuous integration](#continuous-integration)
 - [Project structure](#project-structure)
 
 ---
@@ -320,6 +323,20 @@ uv run ruff format --check .   # formatting (drop --check to reformat)
 uv run mypy                    # type-check app/, tests/ and migrations/
 ```
 
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and
+on every pull request, as three parallel jobs:
+
+| Job       | What it checks                                                                                       |
+|-----------|------------------------------------------------------------------------------------------------------|
+| `quality` | `ruff check`, `ruff format --check`, `mypy`, and that the generated OpenAPI document is a valid spec |
+| `test`    | The full test suite against a PostgreSQL 17 service container                                        |
+| `compose` | The one-command start: `docker compose up --build`, then a create request and an error response, then `docker compose down -v` |
+
+Dependencies are installed exactly as locked (`uv sync --frozen`), with the
+same uv version as local development and the Docker image.
+
 ## Project structure
 
 ```
@@ -338,6 +355,7 @@ tests/           Unit tests; tests/db/ needs PostgreSQL.
 Dockerfile       The API image (also used by the one-shot migration service).
 compose.yaml     Local stack: db, migrate, api.
 docker/          PostgreSQL init script (creates the test database).
+.github/         CI workflow.
 ```
 
 A request flows `HTTP → route → schema validation → service → repository → PostgreSQL`

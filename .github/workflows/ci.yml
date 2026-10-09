@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only: CI checks the code, it never writes to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run still in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, format, types, OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.22" # same uv as local development and the Dockerfile
+          enable-cache: true
+
+      - name: Install dependencies (exactly as locked)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Type-check
+        run: uv run mypy
+
+      - name: Validate the OpenAPI document
+        run: |
+          uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi()))" > openapi.json
+          uvx openapi-spec-validator==0.9.0 openapi.json
+
+  test:
+    name: Tests (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: repair_shop
+          POSTGRES_PASSWORD: repair_shop
+          # The suite only needs the test database (name must end in _test).
+          POSTGRES_DB: repair_shop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U repair_shop -d repair_shop_test -h 127.0.0.1"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://repair_shop:repair_shop@localhost:5432/repair_shop_test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.22"
+          enable-cache: true
+
+      - name: Install dependencies (exactly as locked)
+        run: uv sync --frozen
+
+      - name: Run the test suite
+        run: uv run pytest
+
+  compose:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The documented one-command start, from a clean checkout. Fails if the
+      # image doesn't build or the migrations don't complete.
+      - name: Start the stack
+        run: docker compose up --build -d
+
+      - name: Wait for the API
+        run: |
+          for attempt in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/openapi.json > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API did not become ready" >&2
+          exit 1
+
+      - name: Smoke requests
+        run: |
+          status=$(curl -s -o created.json -w '%{http_code}' -X POST http://127.0.0.1:8000/tasks \
+            -H 'Content-Type: application/json' -d '{"title": "CI smoke test"}')
+          echo "POST /tasks -> $status: $(cat created.json)"
+          test "$status" = 201
+
+          content_type=$(curl -s -o /dev/null -w '%{content_type}' http://127.0.0.1:8000/tasks/abc)
+          echo "GET /tasks/abc -> Content-Type: $content_type"
+          test "$content_type" = application/problem+json
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

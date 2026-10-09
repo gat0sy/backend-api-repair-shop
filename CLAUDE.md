@@ -143,6 +143,15 @@ and back out through the response schemas. Each layer has one job. Routers conta
 - Compose credentials are for local development only, and ports are bound to `127.0.0.1`.
 - Local development (tests, `--reload`): `docker compose up -d db`, then the `uv run ...` commands with `.env` copied from `.env.example`.
 
+## CI (settled)
+- **GitHub Actions** (`.github/workflows/ci.yml`), not Jenkins: the repo is on GitHub, and there is no server to maintain.
+- Runs on pushes to `main` and on pull requests, with read-only permissions (`contents: read`). A newer push to the same branch cancels the run in progress.
+- Three parallel jobs:
+  - `quality`: `ruff check`, `ruff format --check`, `mypy`, plus validation of the generated OpenAPI document with `openapi-spec-validator`. The validator is pinned and run through `uvx`, as a CI check, not a project dependency.
+  - `test`: the full pytest suite against a `postgres:17` service container. Only `TEST_DATABASE_URL` is set; there is no `.env` in CI.
+  - `compose`: smoke test of the one-command start (`docker compose up --build`, wait for readiness, a create request and an error-format check, logs on failure, always `down -v`). The image is built but **never pushed** anywhere.
+- Versions are pinned: `actions/checkout@v7`, `astral-sh/setup-uv@v10` with uv `0.12.22` (the same uv as local development and the `Dockerfile`), and dependencies installed with `uv sync --frozen`.
+
 ## Build order (inside-out)
 1. Project bootstrap
 2. Core/domain behavior + tests
