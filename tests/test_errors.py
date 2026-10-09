@@ -72,7 +72,13 @@ def assert_problem(response: Response, status: int, title: str) -> dict[str, obj
 @pytest.mark.parametrize(
     ("method", "url", "kwargs", "status", "title"),
     [
-        ("POST", "/tasks", {"content": "{bad", "headers": {"content-type": "application/json"}}, 400, "Bad Request"),
+        (
+            "POST",
+            "/tasks",
+            {"content": "{bad", "headers": {"content-type": "application/json"}},
+            400,
+            "Bad Request",
+        ),
         ("GET", "/tasks/42", {}, 404, "Not Found"),
         ("GET", "/nope", {}, 404, "Not Found"),
         ("GET", "/tasks/", {}, 404, "Not Found"),
@@ -81,11 +87,24 @@ def assert_problem(response: Response, status: int, title: str) -> dict[str, obj
         ("GET", "/tasks", {"params": {"limit": "0"}}, 422, "Unprocessable Content"),
         ("GET", "/tasks/abc", {}, 422, "Unprocessable Content"),
     ],
-    ids=["malformed-json", "task-not-found", "unknown-url", "trailing-slash",
-         "wrong-method", "invalid-body", "invalid-query", "invalid-path"],
+    ids=[
+        "malformed-json",
+        "task-not-found",
+        "unknown-url",
+        "trailing-slash",
+        "wrong-method",
+        "invalid-body",
+        "invalid-query",
+        "invalid-path",
+    ],
 )
 def test_every_error_uses_the_problem_structure(
-    client: TestClient, method: str, url: str, kwargs: dict[str, object], status: int, title: str
+    client: TestClient,
+    method: str,
+    url: str,
+    kwargs: dict[str, object],
+    status: int,
+    title: str,
 ) -> None:
     assert_problem(client.request(method, url, **kwargs), status, title)  # type: ignore[arg-type]
 
@@ -277,7 +296,9 @@ def test_json_media_type_parameters_and_case_are_accepted(
 ) -> None:
     # Reaches the service (stubbed to report not-found), so the media type passed.
     response = client.patch(
-        "/tasks/1", content=b'{"status": "done"}', headers={"content-type": content_type}
+        "/tasks/1",
+        content=b'{"status": "done"}',
+        headers={"content-type": content_type},
     )
 
     assert response.status_code == 404

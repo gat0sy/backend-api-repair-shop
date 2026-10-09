@@ -111,8 +111,12 @@ def test_list_combines_filters(repo: TaskRepository) -> None:
     match = repo.add(
         NewTask(title="a", status=TaskStatus.DONE, priority=TaskPriority.HIGH), now=NOW
     )
-    repo.add(NewTask(title="b", status=TaskStatus.DONE, priority=TaskPriority.LOW), now=NOW)
-    repo.add(NewTask(title="c", status=TaskStatus.TODO, priority=TaskPriority.HIGH), now=NOW)
+    repo.add(
+        NewTask(title="b", status=TaskStatus.DONE, priority=TaskPriority.LOW), now=NOW
+    )
+    repo.add(
+        NewTask(title="c", status=TaskStatus.TODO, priority=TaskPriority.HIGH), now=NOW
+    )
 
     result = repo.list_tasks(
         status=TaskStatus.DONE, priority=TaskPriority.HIGH, limit=20, offset=0
@@ -136,10 +140,15 @@ def test_list_applies_limit_and_offset_after_ordering(repo: TaskRepository) -> N
 
 def test_list_paginates_within_filtered_results(repo: TaskRepository) -> None:
     done = [
-        repo.add(NewTask(title=f"done {i}", status=TaskStatus.DONE), now=NOW + timedelta(minutes=i))
+        repo.add(
+            NewTask(title=f"done {i}", status=TaskStatus.DONE),
+            now=NOW + timedelta(minutes=i),
+        )
         for i in range(3)
     ]
-    repo.add(NewTask(title="todo", status=TaskStatus.TODO), now=NOW + timedelta(minutes=10))
+    repo.add(
+        NewTask(title="todo", status=TaskStatus.TODO), now=NOW + timedelta(minutes=10)
+    )
 
     result = repo.list_tasks(status=TaskStatus.DONE, limit=2, offset=1)
 
@@ -161,9 +170,15 @@ def test_count_without_filters_counts_all_tasks(repo: TaskRepository) -> None:
 
 
 def test_count_applies_the_same_filters_as_list(repo: TaskRepository) -> None:
-    repo.add(NewTask(title="a", status=TaskStatus.DONE, priority=TaskPriority.HIGH), now=NOW)
-    repo.add(NewTask(title="b", status=TaskStatus.DONE, priority=TaskPriority.LOW), now=NOW)
-    repo.add(NewTask(title="c", status=TaskStatus.TODO, priority=TaskPriority.HIGH), now=NOW)
+    repo.add(
+        NewTask(title="a", status=TaskStatus.DONE, priority=TaskPriority.HIGH), now=NOW
+    )
+    repo.add(
+        NewTask(title="b", status=TaskStatus.DONE, priority=TaskPriority.LOW), now=NOW
+    )
+    repo.add(
+        NewTask(title="c", status=TaskStatus.TODO, priority=TaskPriority.HIGH), now=NOW
+    )
 
     assert repo.count_tasks(status=TaskStatus.DONE) == 2
     assert repo.count_tasks(priority=TaskPriority.HIGH) == 2

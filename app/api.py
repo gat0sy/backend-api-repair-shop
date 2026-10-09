@@ -59,6 +59,7 @@ def get_services(request: Request) -> TaskServices:
 
 ServicesDep = Annotated[TaskServices, Depends(get_services)]
 
+
 def require_json(request: Request) -> None:
     """Reject request bodies that aren't `application/json` with 415.
 
@@ -85,9 +86,7 @@ def require_json(request: Request) -> None:
 # never be an id, so it is rejected as invalid input (and never reaches SQL,
 # where it would overflow the INTEGER parameter).
 MAX_TASK_ID = 2_147_483_647
-TaskId = Annotated[
-    int, Path(ge=1, le=MAX_TASK_ID, description="The task's id.")
-]
+TaskId = Annotated[int, Path(ge=1, le=MAX_TASK_ID, description="The task's id.")]
 
 # Declared on every route without query parameters, so unknown query
 # parameters are rejected there too (TaskListQuery does the same for the list).

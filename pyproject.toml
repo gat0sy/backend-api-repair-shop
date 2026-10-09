@@ -26,5 +26,26 @@ addopts = "-ra --strict-markers"
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "ruff>=0.16.10",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: import sorting, B: bugbear (likely bugs),
+# UP: pyupgrade (modern syntax), SIM: simplifications, RUF: ruff's own checks.
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "tests", "migrations"]
+
+[tool.pydantic-mypy]
+# Type-check Pydantic model constructors like regular functions.
+init_forbid_extra = true
+init_typed = true

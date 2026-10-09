@@ -35,7 +35,12 @@ def test_create_minimal_body_gets_defaults() -> None:
 
 
 def test_create_accepts_all_fields() -> None:
-    body = {"title": "t", "description": "d", "status": "in_progress", "priority": "high"}
+    body = {
+        "title": "t",
+        "description": "d",
+        "status": "in_progress",
+        "priority": "high",
+    }
 
     new = parse(TaskCreate, body).to_domain()
 
@@ -160,7 +165,12 @@ def test_patch_rejects_invalid_values(body: dict[str, object]) -> None:
 def test_list_query_defaults() -> None:
     query = TaskListQuery()
 
-    assert (query.status, query.priority, query.limit, query.offset) == (None, None, 20, 0)
+    assert (query.status, query.priority, query.limit, query.offset) == (
+        None,
+        None,
+        20,
+        0,
+    )
 
 
 @pytest.mark.parametrize("limit", [1, 100])
@@ -211,7 +221,9 @@ def test_response_uses_string_enum_values() -> None:
 
 
 def test_response_timestamps_are_utc_with_z_suffix() -> None:
-    plus_two = datetime(2026, 1, 1, 11, 0, 0, 123456, tzinfo=timezone(timedelta(hours=2)))
+    plus_two = datetime(
+        2026, 1, 1, 11, 0, 0, 123456, tzinfo=timezone(timedelta(hours=2))
+    )
 
     data = TaskResponse.from_domain(
         make_task(created_at=plus_two, updated_at=plus_two)

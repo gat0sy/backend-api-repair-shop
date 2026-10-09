@@ -5,16 +5,16 @@ Revises: 5a38fe45bd61
 Create Date: 2026-10-07
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
-revision: str = 'e7d5311ff582'
-down_revision: Union[str, Sequence[str], None] = '5a38fe45bd61'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "e7d5311ff582"
+down_revision: str | Sequence[str] | None = "5a38fe45bd61"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

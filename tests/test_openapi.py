@@ -147,7 +147,10 @@ def test_create_body_requires_only_title_and_forbids_extras(
 
     assert create["required"] == ["title"]
     assert create["additionalProperties"] is False
-    assert (create["properties"]["title"]["minLength"], create["properties"]["title"]["maxLength"]) == (1, 255)
+    assert (
+        create["properties"]["title"]["minLength"],
+        create["properties"]["title"]["maxLength"],
+    ) == (1, 255)
 
 
 def test_patch_body_has_no_required_fields_and_forbids_extras(

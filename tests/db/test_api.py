@@ -94,7 +94,9 @@ def test_create_sets_location_header_to_the_new_task(client: TestClient) -> None
         {"title": "t", "unknown": 1},
     ],
 )
-def test_create_rejects_invalid_body(client: TestClient, body: dict[str, object]) -> None:
+def test_create_rejects_invalid_body(
+    client: TestClient, body: dict[str, object]
+) -> None:
     assert client.post("/tasks", json=body).status_code == 422
 
 
@@ -313,14 +315,18 @@ def test_patch_description_null_clears_and_omitted_keeps(client: TestClient) -> 
         {"unknown": 1},
     ],
 )
-def test_patch_rejects_invalid_body(client: TestClient, body: dict[str, object]) -> None:
+def test_patch_rejects_invalid_body(
+    client: TestClient, body: dict[str, object]
+) -> None:
     created = create(client)
 
     assert client.patch(f"/tasks/{created['id']}", json=body).status_code == 422
 
 
 @pytest.mark.parametrize("body", [{"status": "done"}, {}])
-def test_patch_unknown_id_returns_404(client: TestClient, body: dict[str, object]) -> None:
+def test_patch_unknown_id_returns_404(
+    client: TestClient, body: dict[str, object]
+) -> None:
     assert client.patch("/tasks/999999", json=body).status_code == 404
 
 
@@ -344,7 +350,9 @@ def test_delete_unknown_id_returns_404(client: TestClient) -> None:
 # --- Request transaction --------------------------------------------------------
 
 
-def test_successful_request_commits(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_successful_request_commits(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(app.state, "engine", engine, raising=False)
     client = TestClient(app)
 

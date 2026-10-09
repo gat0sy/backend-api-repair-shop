@@ -178,8 +178,7 @@ class TaskResponse(BaseModel):
     )
     updated_at: datetime = Field(
         description=(
-            "When a value last actually changed (equals `created_at` until then). "
-            "UTC."
+            "When a value last actually changed (equals `created_at` until then). UTC."
         )
     )
 

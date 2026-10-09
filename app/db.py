@@ -51,7 +51,9 @@ tasks = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     CheckConstraint(_one_of("status", [s.value for s in TaskStatus]), name="status"),
-    CheckConstraint(_one_of("priority", [p.value for p in TaskPriority]), name="priority"),
+    CheckConstraint(
+        _one_of("priority", [p.value for p in TaskPriority]), name="priority"
+    ),
     # char_length counts characters, not bytes, matching the API contract.
     CheckConstraint("char_length(title) BETWEEN 1 AND 255", name="title_length"),
     CheckConstraint(

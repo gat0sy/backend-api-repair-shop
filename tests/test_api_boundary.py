@@ -130,7 +130,9 @@ def test_id_range_is_part_of_the_openapi_contract(method: str) -> None:
     assert task_id["schema"]["maximum"] == MAX_TASK_ID
 
 
-@pytest.mark.parametrize(("method", "path"), [("POST", "/tasks"), ("PATCH", "/tasks/1")])
+@pytest.mark.parametrize(
+    ("method", "path"), [("POST", "/tasks"), ("PATCH", "/tasks/1")]
+)
 def test_non_json_body_never_opens_a_transaction(
     client: TestClient, engine: RecordingEngine, method: str, path: str
 ) -> None:

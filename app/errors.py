@@ -83,9 +83,7 @@ _HTTP_DETAILS = {
 }
 
 
-def _problem(
-    status: int, detail: str, errors: Sequence[ErrorItem] = ()
-) -> Problem:
+def _problem(status: int, detail: str, errors: Sequence[ErrorItem] = ()) -> Problem:
     return Problem(
         title=HTTPStatus(status).phrase,
         status=status,
@@ -138,9 +136,7 @@ async def _validation_handler(
     # 400, and no field-level details. The client's input is never echoed.
     if any(error["type"] == "json_invalid" for error in errors):
         return problem_response(400, MALFORMED_JSON)
-    return problem_response(
-        422, INVALID_DATA, [_error_item(error) for error in errors]
-    )
+    return problem_response(422, INVALID_DATA, [_error_item(error) for error in errors])
 
 
 def _not_found_detail(task_id: int) -> str:
@@ -185,9 +181,7 @@ async def _http_exception_handler(
     return problem_response(exc.status_code, detail, headers=headers)
 
 
-async def _unexpected_error_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
     # Never expose internal details to the client. No logging here: Starlette
     # re-raises the exception after this response is sent, and the server
     # (uvicorn) logs it with the full traceback.

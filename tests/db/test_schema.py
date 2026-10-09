@@ -4,7 +4,7 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import Connection, Engine, Executable, RowMapping, inspect, insert
+from sqlalchemy import Connection, Engine, Executable, RowMapping, insert, inspect
 from sqlalchemy.exc import DBAPIError
 
 from app.db import metadata, tasks
@@ -37,7 +37,9 @@ def insert_task(connection: Connection, **overrides: object) -> RowMapping:
     return connection.execute(statement).mappings().one()
 
 
-def assert_rejected(connection: Connection, statement: Executable, sqlstate: str) -> None:
+def assert_rejected(
+    connection: Connection, statement: Executable, sqlstate: str
+) -> None:
     with pytest.raises(DBAPIError) as exc_info:
         connection.execute(statement)
     assert getattr(exc_info.value.orig, "sqlstate", None) == sqlstate
@@ -65,7 +67,9 @@ def test_migrations_match_table_definitions(connection: Connection) -> None:
 
 
 def test_check_constraint_names_match_table_definitions(connection: Connection) -> None:
-    in_database = {c["name"] for c in inspect(connection).get_check_constraints("tasks")}
+    in_database = {
+        c["name"] for c in inspect(connection).get_check_constraints("tasks")
+    }
 
     assert in_database == {
         "ck_tasks_status",
@@ -96,7 +100,9 @@ def test_explicit_id_is_rejected(connection: Connection) -> None:
 
 
 @pytest.mark.parametrize("status", list(TaskStatus))
-def test_every_domain_status_is_accepted(connection: Connection, status: TaskStatus) -> None:
+def test_every_domain_status_is_accepted(
+    connection: Connection, status: TaskStatus
+) -> None:
     assert insert_task(connection, status=status.value)["status"] == status.value
 
 
@@ -104,7 +110,9 @@ def test_every_domain_status_is_accepted(connection: Connection, status: TaskSta
 def test_every_domain_priority_is_accepted(
     connection: Connection, priority: TaskPriority
 ) -> None:
-    assert insert_task(connection, priority=priority.value)["priority"] == priority.value
+    assert (
+        insert_task(connection, priority=priority.value)["priority"] == priority.value
+    )
 
 
 @pytest.mark.parametrize("column", ["status", "priority"])
@@ -152,7 +160,9 @@ def test_title_at_max_length_is_accepted(connection: Connection) -> None:
 
 
 @pytest.mark.parametrize("title", ["", "t" * 256])
-def test_title_outside_length_limits_is_rejected(connection: Connection, title: str) -> None:
+def test_title_outside_length_limits_is_rejected(
+    connection: Connection, title: str
+) -> None:
     statement = insert(tasks).values(**valid_values(title=title))
 
     assert_rejected(connection, statement, CHECK_VIOLATION)

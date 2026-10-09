@@ -26,7 +26,9 @@ def empty_tasks_table(engine: Engine) -> None:
 
 
 @pytest.fixture
-def live_client(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def live_client(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
     monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
     empty_tasks_table(engine)
     with TestClient(app) as client:  # `with` runs the lifespan (startup/shutdown)
