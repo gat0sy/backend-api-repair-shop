@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -6,7 +6,8 @@ from fastapi import FastAPI
 from sqlalchemy import create_engine
 
 from app.api import router
-from app.config import Settings
+from app.config import CorsSettings, Settings
+from app.cors import add_cors
 from app.errors import EXCEPTION_HANDLERS, problem_schemas
 
 DESCRIPTION = """
@@ -21,6 +22,8 @@ A small task management API.
 - URLs have no trailing slash: `/tasks/` is `404`, not a redirect.
 - A method the URL doesn't support returns `405` with an `Allow` header
   listing the supported methods.
+- Browser frontends on another origin need that origin listed in the server's
+  `CORS_ORIGINS` setting (none by default).
 
 **Errors**
 
@@ -42,27 +45,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine.dispose()
 
 
-app = FastAPI(
-    title="Repair Shop Task API",
-    version="0.1.0",
-    description=DESCRIPTION,
-    lifespan=lifespan,
-    exception_handlers=EXCEPTION_HANDLERS,
-    # One canonical URL per resource: `/tasks/` is 404, not a redirect.
-    redirect_slashes=False,
-)
-app.include_router(router)
+def create_app(cors_origins: Sequence[str] = ()) -> FastAPI:
+    """Build the application. `cors_origins`: browser origins allowed (CORS)."""
+    app = FastAPI(
+        title="Repair Shop Task API",
+        version="0.1.0",
+        description=DESCRIPTION,
+        lifespan=lifespan,
+        exception_handlers=EXCEPTION_HANDLERS,
+        # One canonical URL per resource: `/tasks/` is 404, not a redirect.
+        redirect_slashes=False,
+    )
+    app.include_router(router)
+    add_cors(app, cors_origins)
+    _add_problem_schemas_to_openapi(app)
+    return app
 
-_generate_openapi = app.openapi
 
-
-def _openapi_with_problem_schemas() -> dict[str, Any]:
+def _add_problem_schemas_to_openapi(app: FastAPI) -> None:
     # FastAPI's own generator, plus the Problem/ErrorItem schemas that the
     # error responses refer to (see app.errors.problem_schemas).
-    if app.openapi_schema is None:
-        schema = _generate_openapi()
-        schema["components"]["schemas"].update(problem_schemas())
-    return app.openapi_schema  # type: ignore[return-value]
+    generate_openapi = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = generate_openapi()
+            schema["components"]["schemas"].update(problem_schemas())
+        return app.openapi_schema  # type: ignore[return-value]
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
-app.openapi = _openapi_with_problem_schemas  # type: ignore[method-assign]
+app = create_app(CorsSettings().cors_origins)

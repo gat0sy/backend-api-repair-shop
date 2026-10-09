@@ -243,6 +243,26 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
   are created or deleted at the same moment, `total` can be briefly off by
   that change. This is normal for paginated APIs.
 
+### Browser frontends (CORS)
+
+A frontend served from a different origin (for example a dev server on
+`http://localhost:3000`) can only call the API if that origin is allowed.
+List the allowed origins in `CORS_ORIGINS`, comma-separated:
+
+```bash
+CORS_ORIGINS=http://localhost:3000 docker compose up --build
+```
+
+(or put `CORS_ORIGINS=...` in `.env`). Rules:
+
+- By default no origin is allowed. `*` (any origin) is rejected on purpose.
+- Each entry is an exact origin: `scheme://host[:port]`, no path, no trailing
+  slash. An invalid entry stops the API at startup with an error.
+- Allowed methods are `GET`, `POST`, `PATCH`, `DELETE`; the only allowed request
+  header is `Content-Type`. Frontend code can read the `Location` header.
+- No credentials (cookies or auth headers): the API has no authentication.
+- A rejected preflight request gets `400` in the usual error format.
+
 ### Errors
 
 Every error response uses [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457),
@@ -272,7 +292,7 @@ with `Content-Type: application/problem+json` and always the same five keys:
 
 | Status | When                                                                                              |
 |--------|---------------------------------------------------------------------------------------------------|
-| `400`  | The body is not valid JSON.                                                                       |
+| `400`  | The body is not valid JSON, or a CORS preflight request was rejected.                             |
 | `404`  | The task doesn't exist, or the URL doesn't exist.                                                 |
 | `405`  | The method isn't supported at this URL (`Allow` lists the supported ones).                        |
 | `415`  | A request body isn't sent as `application/json` (including a body sent with no `Content-Type`).   |

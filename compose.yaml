@@ -8,6 +8,9 @@ x-app: &app
   image: repair-shop-api:local
   environment:
     DATABASE_URL: postgresql+psycopg://repair_shop:repair_shop@db:5432/repair_shop
+    # Browser origins allowed to call the API (CORS). Taken from your shell or
+    # the project's .env; empty by default (no cross-origin access).
+    CORS_ORIGINS: ${CORS_ORIGINS:-}
 
 services:
   db:

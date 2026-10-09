@@ -10,7 +10,7 @@ You are the coding/execution agent. The user is the developer/reviewer. Architec
 - Dependency management: **uv** with `pyproject.toml`
 - Data access: **SQLAlchemy Core** (no ORM), synchronous, **psycopg 3** driver. Chosen over the ORM (redundant change tracking and session semantics, since change detection lives in the domain), SQLModel (merges the schema and persistence layers), and handwritten SQL (manual mapping, no Alembic autogenerate).
 - Migrations: **Alembic**. Migrations are snapshots: they write values literally and never import app code.
-- Configuration: environment variables via **pydantic-settings** (`DATABASE_URL`, `TEST_DATABASE_URL`). `.env` is for local development only and is git-ignored, and `.env.example` documents it.
+- Configuration: environment variables via **pydantic-settings** (`DATABASE_URL`, `TEST_DATABASE_URL`, `CORS_ORIGINS`). `.env` is for local development only and is git-ignored, and `.env.example` documents it.
 - Tests: pytest
 
 ## Domain
@@ -103,6 +103,13 @@ These are contract decisions. Implement each one in the build step it belongs to
 - All validation failures (body and query) are converted into the single error structure.
 - Repeated scalar query parameters: **the last value wins** (FastAPI's behavior, kept on purpose). Earlier values are ignored and **not validated**: `?limit=abc&limit=5` is accepted as `limit=5`, and `?limit=5&limit=500` is rejected because 500 is invalid. Tests pin this behavior so a FastAPI upgrade that changes it is noticed. Known consequence: turning an existing scalar parameter into a multi-value one later (e.g. `status`) would be a breaking change for clients that send repeats.
 
+### CORS (browser frontends)
+- Configured with `CORS_ORIGINS`: a comma-separated list of exact origins (`scheme://host[:port]`, no path or trailing slash). Read by `CorsSettings`, which is separate from `Settings` because CORS is set up when the app is created and must not require `DATABASE_URL`.
+- Restrictive by default: unset or empty means no CORS layer at all. `*` and malformed origins are rejected at startup.
+- Starlette's `CORSMiddleware` with methods `GET, POST, PATCH, DELETE`, the request header `Content-Type`, `Location` exposed, and no credentials (there is no authentication).
+- A rejected preflight is answered as 400 Problem Details (a thin subclass in `app/cors.py`), so every error keeps the single error format.
+- The app is assembled by `create_app(cors_origins)` in `app/main.py`; the module-level `app` uses `CorsSettings`.
+
 ### URLs and methods
 - One canonical URL per resource. No trailing-slash redirects (`redirect_slashes=False`), so `/tasks/` is 404.
 - 405 responses list **every** method the URL supports in `Allow` (RFC 9110). Starlette alone lists only the first matching route's methods.
@@ -113,7 +120,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - `type` is always `about:blank`, so clients distinguish errors by `status`. No custom type URIs.
 - `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path", "field": <dotted name or null>, "message": <text>}`. For every other status it is empty.
 - Status codes:
-  - 400: malformed JSON.
+  - 400: malformed JSON, or a rejected CORS preflight.
   - 404: unknown task or unknown URL.
   - 405: method not allowed.
   - 415: wrong media type.
