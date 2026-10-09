@@ -100,6 +100,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 ### Query parameters
 - Unknown query parameters are rejected (422) on **every** endpoint, not just `GET /tasks`. This uses Pydantic query models with `extra="forbid"`; endpoints without query parameters declare an empty one.
 - Every known query parameter has explicit validation constraints.
+- Integer query parameters use Pydantic's standard (lax) parsing: `limit=5.0` is accepted as `5`, while `5.5` or `abc` is rejected. Accepted in the Step 13 review for v1.0.0; no custom coercion logic.
 - All validation failures (body and query) are converted into the single error structure.
 - Repeated scalar query parameters: **the last value wins** (FastAPI's behavior, kept on purpose). Earlier values are ignored and **not validated**: `?limit=abc&limit=5` is accepted as `limit=5`, and `?limit=5&limit=500` is rejected because 500 is invalid. Tests pin this behavior so a FastAPI upgrade that changes it is noticed. Known consequence: turning an existing scalar parameter into a multi-value one later (e.g. `status`) would be a breaking change for clients that send repeats.
 
