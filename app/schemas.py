@@ -29,6 +29,9 @@ from app.service import TaskPage
 
 TITLE_MAX_LENGTH = 255
 DESCRIPTION_MAX_LENGTH = 5000
+# PostgreSQL's OFFSET is a 64-bit integer (bigint). Larger values would fail in
+# SQL with a 500; every accepted offset past the end returns an empty page.
+MAX_OFFSET = 2**63 - 1
 
 
 def _reject_unstorable_text(value: object, info: ValidationInfo) -> object:
@@ -188,7 +191,10 @@ class TaskListQuery(BaseModel):
         default=20, ge=1, le=100, description="Maximum number of tasks to return."
     )
     offset: int = Field(
-        default=0, ge=0, description="Number of matching tasks to skip first."
+        default=0,
+        ge=0,
+        le=MAX_OFFSET,
+        description="Number of matching tasks to skip first.",
     )
 
 

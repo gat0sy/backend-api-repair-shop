@@ -223,7 +223,7 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 | `status`        | (all)   | `todo`, `in_progress` or `done`                           |
 | `priority`      | (all)   | `low`, `medium` or `high`                                 |
 | `limit`         | `20`    | Maximum number of tasks returned. `1` to `100`.           |
-| `offset`        | `0`     | Number of matching tasks skipped first. `0` or more.      |
+| `offset`        | `0`     | Number of matching tasks skipped first. `0` to `9223372036854775807` (2^63−1, PostgreSQL's 64-bit limit). |
 
 - All parameters can be combined:
   `GET /tasks?status=todo&priority=high&limit=10&offset=20`.
@@ -232,8 +232,8 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 - **`total`** is the number of tasks matching the filters, ignoring
   `limit`/`offset`. An `offset` past the end returns an empty `items` list,
   with `total` still filled in.
-- **Out-of-range values are rejected, not clamped**: `limit=0`, `limit=500`
-  and `offset=-1` are all `422`.
+- **Out-of-range values are rejected, not clamped**: `limit=0`, `limit=500`,
+  `offset=-1` and `offset=9223372036854775808` are all `422`.
 - **Repeated parameters: the last value wins.** For example,
   `?limit=5&limit=10` uses `limit=10`. Earlier values are ignored and not
   validated, so `?limit=abc&limit=5` is accepted as `limit=5`, while

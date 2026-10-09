@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api import MAX_TASK_ID
 from app.main import app
+from app.schemas import MAX_OFFSET
 
 
 class RecordingEngine:
@@ -78,6 +79,7 @@ def test_invalid_body_never_opens_a_transaction(
         ("GET", "/tasks", {"limit": "0"}),
         ("GET", "/tasks", {"limit": "101"}),
         ("GET", "/tasks", {"offset": "-1"}),
+        ("GET", "/tasks", {"offset": str(MAX_OFFSET + 1)}),
         ("GET", "/tasks", {"status": "x"}),
         ("GET", "/tasks", {"foo": "1"}),
         ("GET", "/tasks/1", {"foo": "1"}),

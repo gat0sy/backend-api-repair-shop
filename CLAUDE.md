@@ -88,7 +88,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 
 ### Pagination (`GET /tasks`)
 - `limit` = maximum number of tasks returned. Default **20**, minimum **1**, maximum **100**.
-- `offset` = number of matching tasks skipped before collecting results. Default **0**, must be non-negative.
+- `offset` = number of matching tasks skipped before collecting results. Default **0**, minimum **0**, maximum **9223372036854775807** (2^63−1: PostgreSQL's `OFFSET` is a bigint, and a larger value would fail in SQL). Any accepted offset past the end returns an empty page.
 - Out-of-range values (e.g. `limit=500`, `limit=0`, `offset=-1`) are rejected, never silently clamped.
 - `status` and `priority` filters are combinable with pagination.
 - Deterministic ordering: `created_at DESC`, then `id DESC` as the tie-breaker.

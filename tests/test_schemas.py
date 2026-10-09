@@ -10,7 +10,13 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.domain import UNSET, Task, TaskPriority, TaskStatus
-from app.schemas import TaskCreate, TaskListQuery, TaskPatch, TaskResponse
+from app.schemas import (
+    MAX_OFFSET,
+    TaskCreate,
+    TaskListQuery,
+    TaskPatch,
+    TaskResponse,
+)
 
 
 def parse[M: BaseModel](model: type[M], data: object) -> M:
@@ -218,9 +224,21 @@ def test_list_query_accepts_limit_bounds(limit: int) -> None:
     assert TaskListQuery(limit=limit).limit == limit
 
 
+@pytest.mark.parametrize("offset", [0, MAX_OFFSET])
+def test_list_query_accepts_offset_bounds(offset: int) -> None:
+    assert TaskListQuery(offset=offset).offset == offset
+
+
 @pytest.mark.parametrize(
     "params",
-    [{"limit": 0}, {"limit": 101}, {"limit": 500}, {"limit": -1}, {"offset": -1}],
+    [
+        {"limit": 0},
+        {"limit": 101},
+        {"limit": 500},
+        {"limit": -1},
+        {"offset": -1},
+        {"offset": MAX_OFFSET + 1},
+    ],
 )
 def test_list_query_rejects_out_of_range_values(params: dict[str, int]) -> None:
     with pytest.raises(ValidationError):

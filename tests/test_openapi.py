@@ -128,7 +128,11 @@ def test_pagination_bounds_and_defaults(spec: dict[str, Any]) -> None:
     limit, offset = params["limit"]["schema"], params["offset"]["schema"]
 
     assert (limit["minimum"], limit["maximum"], limit["default"]) == (1, 100, 20)
-    assert (offset["minimum"], offset["default"]) == (0, 0)
+    assert (offset["minimum"], offset["maximum"], offset["default"]) == (
+        0,
+        2**63 - 1,
+        0,
+    )
 
 
 def test_enum_values_are_documented(spec: dict[str, Any]) -> None:

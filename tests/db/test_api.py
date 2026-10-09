@@ -199,6 +199,17 @@ def test_list_combines_filters(client: TestClient) -> None:
     assert body["total"] == 1
 
 
+def test_list_accepts_the_maximum_offset(client: TestClient) -> None:
+    # Regression: one above this used to reach PostgreSQL and fail with a 500.
+    create(client)
+
+    response = client.get("/tasks", params={"offset": "9223372036854775807"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["items"], body["total"]) == ([], 1)
+
+
 @pytest.mark.parametrize(
     "params",
     [
@@ -206,6 +217,7 @@ def test_list_combines_filters(client: TestClient) -> None:
         {"limit": "101"},
         {"limit": "500"},
         {"offset": "-1"},
+        {"offset": "9223372036854775808"},
         {"limit": "abc"},
         {"status": "urgent"},
         {"priority": "HIGH"},
