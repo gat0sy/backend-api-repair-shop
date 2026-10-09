@@ -28,12 +28,36 @@ and interactive docs are generated from the code.
 
 ## Getting started
 
-### Requirements
+### Run it (one command)
 
-- [uv](https://docs.astral.sh/uv/) (it installs the pinned Python 3.13 automatically if needed)
-- Docker (for the local PostgreSQL database)
+Requirements: Docker with Compose. Nothing else: no Python, no uv, no `.env`.
 
-### 1. Configuration
+```bash
+docker compose up --build
+```
+
+This starts three services, in order:
+
+1. `db`: PostgreSQL 17. On first start, it also creates the separate
+   `repair_shop_test` database used by the test suite.
+2. `migrate`: applies the database migrations (`alembic upgrade head`), then exits.
+3. `api`: the API, started only after the migrations succeed.
+
+The API is then available at http://127.0.0.1:8000, with interactive docs at
+http://127.0.0.1:8000/docs.
+
+- Stop: `Ctrl+C`, or `docker compose down` if started with `-d`.
+- Reset all data: `docker compose down -v` (deletes the database volume).
+- After changing the code, run `docker compose up --build` again.
+
+The credentials in `compose.yaml` are for local development only. Ports are
+bound to `127.0.0.1`, so nothing is reachable from other machines.
+
+### Local development (tests, auto-reload)
+
+To run the test suite or the API with auto-reload on your machine, you also
+need [uv](https://docs.astral.sh/uv/) (it installs the pinned Python 3.13
+automatically if needed).
 
 Configuration is read from environment variables. For local development, copy
 the example file. `.env` is git-ignored, and its values are for development only.
@@ -47,45 +71,20 @@ cp .env.example .env
 | `DATABASE_URL`      | app, `alembic`      | Development database                                               |
 | `TEST_DATABASE_URL` | test suite          | Test database; its schema is reset on each run, so the name must end in `_test` |
 
-Real environment variables override values in `.env`.
+Real environment variables override values in `.env`. The values in
+`.env.example` point to the Compose database, which is published on host port
+**5433** (so it doesn't conflict with a PostgreSQL on the default 5432).
 
-### 2. Database
-
-Start PostgreSQL 17 in Docker. It uses host port **5433**, so it doesn't
-conflict with a PostgreSQL already running on the default 5432:
-
-```bash
-docker run -d --name repair-shop-db \
-  -e POSTGRES_USER=repair_shop -e POSTGRES_PASSWORD=repair_shop -e POSTGRES_DB=repair_shop \
-  -p 127.0.0.1:5433:5432 -v repair-shop-pgdata:/var/lib/postgresql/data \
-  postgres:17
-```
-
-Create the separate test database (once, after the container is up):
+Start only the database, apply the migrations, then run the API with
+auto-reload:
 
 ```bash
-docker exec repair-shop-db createdb -U repair_shop repair_shop_test
-```
-
-Apply the migrations to the development database:
-
-```bash
+docker compose up -d db
 uv run alembic upgrade head
-```
-
-Later, `docker start repair-shop-db` / `docker stop repair-shop-db` start and
-stop the database. Data lives in the `repair-shop-pgdata` volume.
-
-> This manual setup will be replaced by Docker Compose in a later step.
-
-### 3. Run
-
-```bash
 uv run uvicorn app.main:app --reload
 ```
 
-The API is then available at http://127.0.0.1:8000, with interactive docs at
-http://127.0.0.1:8000/docs.
+(Stop the Compose `api` service first if it's running: both use port 8000.)
 
 ---
 
@@ -289,9 +288,10 @@ Error responses never echo the submitted values back.
 
 ## Testing
 
-The test suite needs the database container running (see
-[Database](#2-database)); it uses the separate `repair_shop_test` database and
-rebuilds its schema through the migrations on every run.
+The test suite needs the database running (`docker compose up -d db`, and a
+`.env` as described in [Local development](#local-development-tests-auto-reload)).
+It uses the separate `repair_shop_test` database and rebuilds its schema
+through the migrations on every run.
 
 ```bash
 uv run pytest
@@ -335,6 +335,9 @@ app/
   main.py        App setup.
 migrations/      Alembic migrations (the only way the schema changes).
 tests/           Unit tests; tests/db/ needs PostgreSQL.
+Dockerfile       The API image (also used by the one-shot migration service).
+compose.yaml     Local stack: db, migrate, api.
+docker/          PostgreSQL init script (creates the test database).
 ```
 
 A request flows `HTTP → route → schema validation → service → repository → PostgreSQL`

@@ -1,0 +1,13 @@
+# Only what the image needs is sent to Docker: pyproject.toml, uv.lock,
+# alembic.ini, migrations/ and app/. Everything else stays out, in particular
+# local configuration (.env) and the host's virtual environment.
+.git
+.venv
+.env
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+tests
+docker
+*.md

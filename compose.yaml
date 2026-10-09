@@ -1,0 +1,51 @@
+# Local development stack: `docker compose up --build` starts PostgreSQL,
+# applies the migrations, then starts the API on http://127.0.0.1:8000.
+# Credentials here are for local development only.
+name: repair-shop
+
+x-app: &app
+  build: .
+  image: repair-shop-api:local
+  environment:
+    DATABASE_URL: postgresql+psycopg://repair_shop:repair_shop@db:5432/repair_shop
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: repair_shop
+      POSTGRES_PASSWORD: repair_shop
+      POSTGRES_DB: repair_shop
+    ports:
+      # Same port as .env.example, so host-side tools (pytest, alembic) work.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -h 127.0.0.1: check over TCP. During first-time initialization the
+      # server only listens on its Unix socket, so this waits until it's
+      # really ready.
+      test: ["CMD", "pg_isready", "-U", "repair_shop", "-d", "repair_shop", "-h", "127.0.0.1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *app
+    # One-shot: bring the schema up to date, then exit.
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

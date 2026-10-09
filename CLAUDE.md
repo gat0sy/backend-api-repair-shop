@@ -135,7 +135,13 @@ and back out through the response schemas. Each layer has one job. Routers conta
 - Transactions: **one transaction per HTTP request**, owned by the application/request layer. It commits on success and rolls back on error. Repository methods never commit or roll back, and neither does the service.
 - Invalid requests never touch the database. The transaction is opened in the route body (`with services.begin() as service:`), which FastAPI runs only after all path, query and body validation has passed, and it is committed before the response is sent. Dependencies do no I/O, because FastAPI runs them before parameter validation.
 - PATCH runs read-modify-write in that one transaction. The row is locked with `SELECT ... FOR UPDATE` (`TaskRepository.get(..., for_update=True)`), so concurrent PATCHes can't overwrite each other's changes.
-- Local development database: Docker `postgres:17` on host port **5433**. The test suite uses a separate database whose name must end in `_test`, and its schema is rebuilt through the migrations on every run.
+- Local development database: the Docker Compose `db` service (`postgres:17`), published on `127.0.0.1:5433`, which is what `.env.example` points to. On first initialization of its volume, an init script (`docker/postgres/init/`) creates `repair_shop_test`. The test suite uses that separate database, whose name must end in `_test`, and its schema is rebuilt through the migrations on every run.
+
+## Running (settled)
+- One command from a clean checkout: `docker compose up --build`. It starts `db`, then a one-shot `migrate` service (`alembic upgrade head`), then `api` on `127.0.0.1:8000`, but only after the migrations succeed. Migrations are never run from the API container's startup command.
+- One image (`Dockerfile`) serves both `migrate` and `api`: `python:3.13-slim`, uv pinned to the development version, `uv sync --frozen --no-dev`, non-root user. `.dockerignore` keeps `.env`, `.venv`, `.git` and the tests out of it.
+- Compose credentials are for local development only, and ports are bound to `127.0.0.1`.
+- Local development (tests, `--reload`): `docker compose up -d db`, then the `uv run ...` commands with `.env` copied from `.env.example`.
 
 ## Build order (inside-out)
 1. Project bootstrap
