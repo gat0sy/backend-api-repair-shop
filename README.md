@@ -229,7 +229,10 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 - All parameters can be combined:
   `GET /tasks?status=todo&priority=high&limit=10&offset=20`.
 - **Ordering** is always newest first: `created_at` descending, then `id`
-  descending for tasks created at the same instant. Pages are stable.
+  descending for tasks created at the same instant. The ordering is
+  deterministic, but this is offset pagination: if tasks are created or
+  deleted between two page requests, items can shift, so a task may appear on
+  two pages or be skipped.
 - **`total`** is the number of tasks matching the filters, ignoring
   `limit`/`offset`. An `offset` past the end returns an empty `items` list,
   with `total` still filled in.
@@ -300,7 +303,8 @@ with `Content-Type: application/problem+json` and always the same five keys:
 | `422`  | Invalid input: field rules, unknown fields or query parameters, out-of-range values, invalid ids. |
 | `500`  | Unexpected server error. No internal details are included.                                        |
 
-Error responses never echo the submitted values back.
+Error responses never echo submitted body or query values back. (A `404`
+names the requested task id, e.g. `Task 42 not found.`)
 
 ```json
 {

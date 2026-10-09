@@ -126,7 +126,7 @@ These are contract decisions. Implement each one in the build step it belongs to
   - 415: wrong media type.
   - 422: invalid input.
   - 500: unexpected error.
-- Never echo client input, and never expose internal details on 500. The server logs the traceback.
+- Never echo submitted body or query values (a 404 detail names the requested task id, which is a validated integer), and never expose internal details on 500. The server logs the traceback.
 
 ## Out of scope — do NOT add
 JWT, OAuth, Redis, Celery, Kafka, Kubernetes, microservices, AI features, frontend, distributed infrastructure, or abstractions the requirements don't need. No generic base repositories, DI containers, or plugin systems "for later". If you think something extra is justified, ask first.
