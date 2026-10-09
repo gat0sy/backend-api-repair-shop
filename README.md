@@ -292,7 +292,7 @@ with `Content-Type: application/problem+json` and always the same five keys:
 | `title`  | The HTTP status phrase.                                                                  |
 | `status` | The HTTP status code.                                                                    |
 | `detail` | Human-readable explanation.                                                              |
-| `errors` | For `422`: every problem found, each with `location` (`body`, `query` or `path`), `field` (or `null` for the whole body) and `message`. Empty for every other status. |
+| `errors` | For `422`: every problem found, each with `location` (`body`, `query` or `path`; `header` and `cookie` are reserved for future parameters), `field` (or `null` for the whole body) and `message`. Empty for every other status. |
 
 | Status | When                                                                                              |
 |--------|---------------------------------------------------------------------------------------------------|

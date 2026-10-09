@@ -118,7 +118,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 - Every error response uses `Content-Type: application/problem+json` and exactly these keys:
   `{"type": "about:blank", "title": <HTTP status phrase>, "status": <code>, "detail": <explanation>, "errors": [...]}`.
 - `type` is always `about:blank`, so clients distinguish errors by `status`. No custom type URIs.
-- `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path", "field": <dotted name or null>, "message": <text>}`. For every other status it is empty.
+- `errors` is always present. For 422 it lists every problem at once as `{"location": "body"|"query"|"path"|"header"|"cookie", "field": <dotted name or null>, "message": <text>}` (no endpoint has header or cookie parameters yet; those locations are supported so adding one can't crash the error handler). For every other status it is empty.
 - Status codes:
   - 400: malformed JSON, or a rejected CORS preflight.
   - 404: unknown task or unknown URL.
