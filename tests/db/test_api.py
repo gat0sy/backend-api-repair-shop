@@ -50,7 +50,8 @@ def client(connection: Connection, clock: FakeClock) -> Iterator[TestClient]:
 def create(client: TestClient, **body: object) -> dict[str, object]:
     response = client.post("/tasks", json={"title": "Fix printer", **body})
     assert response.status_code == 201, response.text
-    return response.json()
+    task: dict[str, object] = response.json()
+    return task
 
 
 # --- POST /tasks ----------------------------------------------------------------

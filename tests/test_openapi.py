@@ -19,7 +19,8 @@ def spec() -> dict[str, Any]:
 
 
 def operation(spec: dict[str, Any], method: str, path: str) -> dict[str, Any]:
-    return spec["paths"][path][method]
+    found: dict[str, Any] = spec["paths"][path][method]
+    return found
 
 
 EXPECTED_ERRORS = {

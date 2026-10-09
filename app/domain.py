@@ -7,6 +7,7 @@ tested in isolation and reused by every outer layer.
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from enum import Enum, StrEnum
+from typing import Any
 
 
 class TaskStatus(StrEnum):
@@ -46,7 +47,10 @@ class Task:
 
 @dataclass(frozen=True)
 class NewTask:
-    """The values needed to create a task. The id and timestamps are assigned on save."""
+    """The values needed to create a task.
+
+    The id and timestamps are assigned when it is saved.
+    """
 
     title: str
     description: str | None = None
@@ -75,7 +79,7 @@ class TaskUpdate:
     """A partial update. Fields left as UNSET are not touched."""
 
     title: str | _Unset = UNSET
-    description: str | None | _Unset = UNSET
+    description: str | _Unset | None = UNSET
     status: TaskStatus | _Unset = UNSET
     priority: TaskPriority | _Unset = UNSET
 
@@ -99,7 +103,8 @@ def apply_update(task: Task, update: TaskUpdate, now: datetime) -> Task:
     If nothing changes, the original task is returned unchanged, and the
     result compares equal to the input.
     """
-    changes = {
+    # Values per field name: their types vary, so the dict is Any-typed.
+    changes: dict[str, Any] = {
         name: value
         for name, value in update.provided().items()
         if getattr(task, name) != value

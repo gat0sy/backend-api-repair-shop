@@ -56,7 +56,7 @@ def client(services: StubServices) -> TestClient:
 def assert_problem(response: Response, status: int, title: str) -> dict[str, object]:
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
-    body = response.json()
+    body: dict[str, object] = response.json()
     assert set(body) == PROBLEM_KEYS
     assert body["type"] == "about:blank"
     assert body["title"] == title

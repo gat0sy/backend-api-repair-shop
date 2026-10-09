@@ -130,8 +130,8 @@ class TaskPatch(BaseModel):
             "or a string (up to 5000 characters, stored as given) to replace it."
         ),
     )
-    status: TaskStatus = Field(default=None, description="`null` is rejected.")
-    priority: TaskPriority = Field(default=None, description="`null` is rejected.")
+    status: TaskStatus = Field(default=None, description="`null` is rejected.")  # type: ignore[assignment]
+    priority: TaskPriority = Field(default=None, description="`null` is rejected.")  # type: ignore[assignment]
 
     def to_domain(self) -> TaskUpdate:
         provided = {name: getattr(self, name) for name in self.model_fields_set}

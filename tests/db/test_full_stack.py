@@ -9,12 +9,13 @@ before and after each test, since nothing is rolled back automatically.
 import threading
 from collections.abc import Iterator
 from datetime import datetime
+from typing import NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from app.domain import TaskStatus, TaskUpdate
+from app.domain import NewTask, TaskStatus, TaskUpdate
 from app.main import app
 from app.repository import TaskRepository
 from app.service import TaskService
@@ -39,7 +40,8 @@ def live_client(
 def committed_task_count(engine: Engine) -> int:
     # A separate connection only sees committed data.
     with engine.connect() as connection:
-        return connection.execute(text("SELECT count(*) FROM tasks")).scalar_one()
+        count: int = connection.execute(text("SELECT count(*) FROM tasks")).scalar_one()
+        return count
 
 
 # --- Wiring -----------------------------------------------------------------------
@@ -122,8 +124,8 @@ def test_error_after_a_write_rolls_the_request_back(
 ) -> None:
     original_create = TaskService.create_task
 
-    def create_then_fail(self: TaskService, *args: object, **kwargs: object) -> None:
-        original_create(self, *args, **kwargs)  # the INSERT happens...
+    def create_then_fail(self: TaskService, new_task: NewTask) -> NoReturn:
+        original_create(self, new_task)  # the INSERT happens...
         raise RuntimeError("failure after the write")  # ...then the request fails
 
     monkeypatch.setattr(TaskService, "create_task", create_then_fail)

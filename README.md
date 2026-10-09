@@ -21,6 +21,7 @@ and interactive docs are generated from the code.
   - [Listing tasks](#listing-tasks)
   - [Errors](#errors)
 - [Testing](#testing)
+- [Code quality](#code-quality)
 - [Project structure](#project-structure)
 
 ---
@@ -306,6 +307,18 @@ The tests cover each layer on its own (domain rules, schemas, repository,
 service), the HTTP API, the error format, the OpenAPI document, and full-stack
 behavior against PostgreSQL (real commits, rollback on errors, concurrent
 updates).
+
+## Code quality
+
+[Ruff](https://docs.astral.sh/ruff/) lints and formats the code, and
+[mypy](https://mypy.readthedocs.io/) type-checks it in strict mode (with the
+Pydantic plugin). Settings live in `pyproject.toml`.
+
+```bash
+uv run ruff check .            # lint
+uv run ruff format --check .   # formatting (drop --check to reformat)
+uv run mypy                    # type-check app/, tests/ and migrations/
+```
 
 ## Project structure
 

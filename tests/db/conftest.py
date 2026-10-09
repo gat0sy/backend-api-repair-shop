@@ -33,7 +33,8 @@ def engine() -> Iterator[Engine]:
     database = make_url(url).database or ""
     if not database.endswith("_test"):
         raise RuntimeError(
-            f"TEST_DATABASE_URL must point to a database ending in '_test', got {database!r}"
+            "TEST_DATABASE_URL must point to a database ending in '_test', "
+            f"got {database!r}"
         )
 
     engine = create_engine(url)

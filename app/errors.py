@@ -18,13 +18,13 @@ clients distinguish errors by `status`, as RFC 9457 specifies for that type.
 This module also provides the OpenAPI documentation of these responses.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Coroutine, Sequence
 from http import HTTPStatus
 from typing import Any, Literal
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match
@@ -190,7 +190,9 @@ async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONRes
 
 # Passed to FastAPI(exception_handlers=...). The Exception entry handles
 # anything unexpected (500); the others map known errors to their status.
-EXCEPTION_HANDLERS = {
+ExceptionHandler = Callable[[Request, Any], Coroutine[Any, Any, Response]]
+
+EXCEPTION_HANDLERS: dict[int | type[Exception], ExceptionHandler] = {
     RequestValidationError: _validation_handler,
     TaskNotFoundError: _task_not_found_handler,
     StarletteHTTPException: _http_exception_handler,
