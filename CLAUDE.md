@@ -165,6 +165,10 @@ and back out through the response schemas. Each layer has one job. Routers conta
 10. Code quality tooling (lint/format/type-check)
 11. Docker / Docker Compose
 12. CI pipeline
+13. Final code review: one review of the whole codebase. The user decides each finding: fix it (its own commit, behind green CI) or accept it with a reason.
+14. Release: tag the reviewed commit `v1.0.0`, and set the GitHub repository description and topics.
+
+The review comes before the release, so that `v1.0.0` is the version actually handed over and doesn't need a follow-up release for issues that were already known.
 
 Work on one step at a time. Don't start the next step until the user says so. Tests are the behavioral map: write or update them alongside each layer.
 
