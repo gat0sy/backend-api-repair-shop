@@ -150,7 +150,7 @@ and back out through the response schemas. Each layer has one job. Routers conta
   - `quality`: `ruff check`, `ruff format --check`, `mypy`, plus validation of the generated OpenAPI document with `openapi-spec-validator`. The validator is pinned and run through `uvx`, as a CI check, not a project dependency.
   - `test`: the full pytest suite against a `postgres:17` service container. Only `TEST_DATABASE_URL` is set; there is no `.env` in CI.
   - `compose`: smoke test of the one-command start (`docker compose up --build`, wait for readiness, a create request and an error-format check, logs on failure, always `down -v`). The image is built but **never pushed** anywhere.
-- Versions are pinned: `actions/checkout@v7`, `astral-sh/setup-uv@v10` with uv `0.12.22` (the same uv as local development and the `Dockerfile`), and dependencies installed with `uv sync --frozen`.
+- Versions are pinned: `actions/checkout@v7`, `astral-sh/setup-uv` pinned to the commit of `v10.2.0` (that project publishes no moving major tag such as `v10`) with uv `0.12.22` (the same uv as local development and the `Dockerfile`), and dependencies installed with `uv sync --frozen`.
 
 ## Build order (inside-out)
 1. Project bootstrap
