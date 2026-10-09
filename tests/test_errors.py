@@ -155,7 +155,10 @@ def test_trailing_slash_is_not_redirected(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     ("url", "expected"),
-    [("/tasks/1", {"GET", "PATCH", "DELETE"}), ("/tasks", {"GET", "POST"})],
+    [
+        ("/tasks/1", {"GET", "HEAD", "PATCH", "DELETE"}),
+        ("/tasks", {"GET", "HEAD", "POST"}),
+    ],
 )
 def test_wrong_method_lists_every_allowed_method(
     client: TestClient, url: str, expected: set[str]

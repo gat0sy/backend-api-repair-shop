@@ -151,6 +151,18 @@ def test_text_postgres_cannot_store_is_422_before_the_database(
     assert engine.begin_calls == 0
 
 
+@pytest.mark.parametrize("url", ["/tasks/abc", "/tasks?foo=1", "/tasks?limit=0"])
+def test_invalid_head_is_a_bodiless_422_before_the_database(
+    client: TestClient, engine: RecordingEngine, url: str
+) -> None:
+    response = client.head(url)
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.content == b""
+    assert engine.begin_calls == 0
+
+
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_id_range_is_part_of_the_openapi_contract(method: str) -> None:
     operation = app.openapi()["paths"]["/tasks/{task_id}"][method]

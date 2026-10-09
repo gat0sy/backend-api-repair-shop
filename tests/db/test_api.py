@@ -396,3 +396,20 @@ def test_failed_commit_is_reported_as_an_error(
     # The transaction ends inside the route, before the response is sent, so
     # the client sees the failure instead of a 201 for data never saved.
     assert response.status_code == 500
+
+
+# --- HEAD -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("url", ["/tasks/{id}", "/tasks/999999", "/tasks"])
+def test_head_matches_get_without_a_body(client: TestClient, url: str) -> None:
+    created = create(client)
+    url = url.format(id=created["id"])
+
+    get, head = client.get(url), client.head(url)
+
+    assert head.status_code == get.status_code
+    assert head.headers["content-type"] == get.headers["content-type"]
+    assert head.headers["content-length"] == get.headers["content-length"]
+    assert get.content != b""
+    assert head.content == b""

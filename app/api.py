@@ -202,3 +202,18 @@ def delete_task(task_id: TaskId, services: ServicesDep, _: NoQuery) -> None:
     """Delete a task. Deleting it again returns 404."""
     with services.begin() as service:
         service.delete_task(task_id)
+
+
+# HEAD (RFC 9110 §9.3.2) on every URL that supports GET: same status and
+# headers as GET, without a body. The same endpoint functions run, so HEAD
+# can't diverge from GET; Starlette sends only the headers for HEAD. Hidden
+# from OpenAPI: a combined GET+HEAD route would give both operations the same
+# operationId, which makes the OpenAPI document invalid.
+for _path, _endpoint in (("", list_tasks), ("/{task_id}", get_task)):
+    router.add_api_route(
+        _path,
+        _endpoint,
+        methods=["HEAD"],
+        include_in_schema=False,
+        name=f"head_{_endpoint.__name__}",
+    )

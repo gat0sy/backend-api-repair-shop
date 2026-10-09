@@ -186,3 +186,15 @@ def test_response_always_includes_description(spec: dict[str, Any]) -> None:
     task = spec["components"]["schemas"]["TaskResponse"]
 
     assert "description" in task["required"]
+
+
+def test_head_is_not_documented_and_operation_ids_are_unique(
+    spec: dict[str, Any],
+) -> None:
+    operations = [
+        (method, op) for item in spec["paths"].values() for method, op in item.items()
+    ]
+    ids = [op["operationId"] for _, op in operations]
+
+    assert "head" not in {method for method, _ in operations}
+    assert len(ids) == len(set(ids))

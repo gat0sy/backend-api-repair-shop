@@ -113,6 +113,7 @@ These are contract decisions. Implement each one in the build step it belongs to
 ### URLs and methods
 - One canonical URL per resource. No trailing-slash redirects (`redirect_slashes=False`), so `/tasks/` is 404.
 - 405 responses list **every** method the URL supports in `Allow` (RFC 9110). Starlette alone lists only the first matching route's methods.
+- `HEAD` is supported wherever `GET` is (RFC 9110 §9.1/§9.3.2): the same endpoint functions are registered a second time for HEAD only, so status and headers match GET, and Starlette sends no body. These HEAD routes are hidden from OpenAPI (`include_in_schema=False`), because a combined GET+HEAD route gives both operations the same `operationId`, which is invalid OpenAPI.
 
 ### Error structure (RFC 9457 Problem Details)
 - Every error response uses `Content-Type: application/problem+json` and exactly these keys:

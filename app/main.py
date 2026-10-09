@@ -22,6 +22,7 @@ A small task management API.
 - URLs have no trailing slash: `/tasks/` is `404`, not a redirect.
 - A method the URL doesn't support returns `405` with an `Allow` header
   listing the supported methods.
+- `HEAD` works wherever `GET` does: same status and headers, no body.
 - Browser frontends on another origin need that origin listed in the server's
   `CORS_ORIGINS` setting (none by default).
 

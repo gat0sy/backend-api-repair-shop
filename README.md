@@ -111,6 +111,8 @@ These apply to every endpoint:
 - **No trailing slashes.** `/tasks/` is `404`, not a redirect to `/tasks`.
 - **Wrong method.** A method the URL doesn't support returns `405`, with an
   `Allow` header listing the supported methods.
+- **HEAD** works on every URL that supports `GET`: same status and headers,
+  no body (RFC 9110). It isn't listed separately in the OpenAPI docs.
 - **Errors** always use the same [Problem Details](#errors) structure.
 
 ### The task object
