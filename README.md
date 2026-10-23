@@ -1,6 +1,12 @@
 # Repair Shop Task API
 
 [![CI](https://github.com/gat0sy/backend-api-repair-shop/actions/workflows/ci.yml/badge.svg)](https://github.com/gat0sy/backend-api-repair-shop/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Ruff](https://img.shields.io/badge/lint-Ruff-D7FF64?logo=ruff&logoColor=black)
+![mypy](https://img.shields.io/badge/types-mypy_strict-2A6DB2)
 
 A small task management REST API built with **FastAPI** and **PostgreSQL**.
 It's designed so a frontend developer can use it without guessing: every
